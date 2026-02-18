@@ -1,0 +1,218 @@
+{
+  "manifest_version": "1.0.0",
+  "project": {
+    "project_id": "proj_landing",
+    "name": "Landingpage",
+    "repo": "git@example.com:acme/landing.git",
+    "domains": [
+      "example.com"
+    ]
+  },
+  "licensees": [
+    {
+      "licensee_id": "org_acme",
+      "type": "organization",
+      "legal_name": "ACME GmbH",
+      "country": "DE"
+    }
+  ],
+  "fonts": [
+    {
+      "font_id": "font_example_sans",
+      "family_name": "Example Sans",
+      "source": {
+        "type": "byo",
+        "name": "Purchased font files (local)",
+        "notes": "Do not commit proprietary font files."
+      },
+      "usage": {
+        "contexts": [
+          "web"
+        ],
+        "paths": [
+          "src/styles/fonts.css"
+        ],
+        "domains": [
+          "example.com"
+        ]
+      },
+      "active_license_instance_id": "lic_001",
+      "license_instance_ids": [
+        "lic_001"
+      ]
+    }
+  ],
+  "license_offerings": [
+    {
+      "kind": "offering",
+      "offering_id": "foundry.example.web_indie",
+      "offering_version": "1.0.0",
+      "offering_type": "commercial",
+      "name": "Web Indie",
+      "description": "Example offering for web usage (indie).",
+      "rights": [
+        {
+          "right_id": "r.web",
+          "right_type": "media_web",
+          "allowed": true,
+          "regions": [
+            "WW"
+          ]
+        },
+        {
+          "right_id": "r.self_host",
+          "right_type": "distribution_self_hosting",
+          "allowed": true
+        },
+        {
+          "right_id": "r.formats",
+          "right_type": "formats",
+          "allowed": true,
+          "allowed_formats": [
+            "woff2",
+            "variable"
+          ]
+        },
+        {
+          "right_id": "r.mod",
+          "right_type": "modification",
+          "allowed": true,
+          "modification_kinds": [
+            "subset",
+            "convert"
+          ]
+        },
+        {
+          "right_id": "r.clientwork",
+          "right_type": "client_work",
+          "allowed": false
+        }
+      ],
+      "metric_models": [
+        {
+          "metric_type": "pageviews",
+          "allowed_periods": [
+            "per_month"
+          ],
+          "min": 0,
+          "max": 100000,
+          "unit": "views"
+        },
+        {
+          "metric_type": "domains",
+          "allowed_periods": [
+            "lifetime"
+          ],
+          "min": 1,
+          "max": 1,
+          "unit": "domains"
+        }
+      ],
+      "price_formula": {
+        "currency": "EUR",
+        "base_price": 79,
+        "rules": [
+          {
+            "when": {
+              "metric_type": "pageviews",
+              "lte": 100000
+            },
+            "multiplier": 1.0
+          }
+        ]
+      },
+      "upgrade_paths": [
+        {
+          "to_offering_id": "foundry.example.web_pro",
+          "to_offering_version": "1.0.0",
+          "pricing_mode": "difference"
+        }
+      ],
+      "meta": {
+        "scripts": [
+          "Latn"
+        ],
+        "languages": [
+          "de",
+          "en"
+        ],
+        "ot_features": [
+          "liga",
+          "kern"
+        ],
+        "variable_axes": [
+          "wght",
+          "wdth"
+        ]
+      }
+    }
+  ],
+  "license_instances": [
+    {
+      "kind": "instance",
+      "license_id": "lic_001",
+      "licensee_id": "org_acme",
+      "licensee": {
+        "licensee_id": "org_acme",
+        "type": "organization",
+        "legal_name": "ACME GmbH",
+        "country": "DE",
+        "vat_id": "DE123456789"
+      },
+      "offering_ref": {
+        "offering_id": "foundry.example.web_indie",
+        "offering_version": "1.0.0"
+      },
+      "scope": {
+        "scope_type": "project",
+        "scope_id": "proj_landing",
+        "domains": [
+          "example.com"
+        ]
+      },
+      "font_refs": [
+        {
+          "font_id": "font_example_sans",
+          "family_name": "Example Sans",
+          "foundry_name": "Example Foundry",
+          "styles": [
+            "Regular",
+            "Bold"
+          ]
+        }
+      ],
+      "activated_right_ids": [
+        "r.web",
+        "r.self_host",
+        "r.formats",
+        "r.mod"
+      ],
+      "metric_limits": [
+        {
+          "metric_type": "pageviews",
+          "limit": 100000,
+          "period": "per_month"
+        },
+        {
+          "metric_type": "domains",
+          "limit": 1,
+          "period": "lifetime"
+        }
+      ],
+      "status": "active",
+      "valid_from": "2026-02-15T00:00:00Z",
+      "evidence": [
+        {
+          "evidence_id": "ev_invoice_001",
+          "type": "invoice",
+          "issuer": "Example Foundry",
+          "reference": "INV-2026-0001",
+          "purchased_at": "2026-02-15T00:00:00Z",
+          "document_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "document_name": "invoice.pdf"
+        }
+      ],
+      "acquisition_source": "direct_foundry"
+    }
+  ]
+}

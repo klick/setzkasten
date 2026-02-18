@@ -1,0 +1,11 @@
+{
+  "name": "@setzkasten/github-action-license-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"TODO: build action\" && exit 0",
+    "test": "echo \"TODO\" && exit 0",
+    "lint": "echo \"TODO\" && exit 0"
+  }
+}

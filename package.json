@@ -1,0 +1,24 @@
+{
+  "name": "setzkasten",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CLI-first Font license governance tool (V1 scaffold).",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "integrations/*"
+  ],
+  "scripts": {
+    "build": "npm run -ws build",
+    "test": "npm run -ws test",
+    "lint": "npm run -ws lint",
+    "validate:contracts": "node scripts/validate-contracts.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ajv": "^8.17.1"
+  }
+}

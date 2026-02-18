@@ -1,0 +1,103 @@
+{
+  "kind": "offering",
+  "offering_id": "foundry.example.web_indie",
+  "offering_version": "1.0.0",
+  "offering_type": "commercial",
+  "name": "Web Indie",
+  "description": "Example offering for web usage (indie).",
+  "rights": [
+    {
+      "right_id": "r.web",
+      "right_type": "media_web",
+      "allowed": true,
+      "regions": [
+        "WW"
+      ]
+    },
+    {
+      "right_id": "r.self_host",
+      "right_type": "distribution_self_hosting",
+      "allowed": true
+    },
+    {
+      "right_id": "r.formats",
+      "right_type": "formats",
+      "allowed": true,
+      "allowed_formats": [
+        "woff2",
+        "variable"
+      ]
+    },
+    {
+      "right_id": "r.mod",
+      "right_type": "modification",
+      "allowed": true,
+      "modification_kinds": [
+        "subset",
+        "convert"
+      ]
+    },
+    {
+      "right_id": "r.clientwork",
+      "right_type": "client_work",
+      "allowed": false
+    }
+  ],
+  "metric_models": [
+    {
+      "metric_type": "pageviews",
+      "allowed_periods": [
+        "per_month"
+      ],
+      "min": 0,
+      "max": 100000,
+      "unit": "views"
+    },
+    {
+      "metric_type": "domains",
+      "allowed_periods": [
+        "lifetime"
+      ],
+      "min": 1,
+      "max": 1,
+      "unit": "domains"
+    }
+  ],
+  "price_formula": {
+    "currency": "EUR",
+    "base_price": 79,
+    "rules": [
+      {
+        "when": {
+          "metric_type": "pageviews",
+          "lte": 100000
+        },
+        "multiplier": 1.0
+      }
+    ]
+  },
+  "upgrade_paths": [
+    {
+      "to_offering_id": "foundry.example.web_pro",
+      "to_offering_version": "1.0.0",
+      "pricing_mode": "difference"
+    }
+  ],
+  "meta": {
+    "scripts": [
+      "Latn"
+    ],
+    "languages": [
+      "de",
+      "en"
+    ],
+    "ot_features": [
+      "liga",
+      "kern"
+    ],
+    "variable_axes": [
+      "wght",
+      "wdth"
+    ]
+  }
+}

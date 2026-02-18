@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://setzkasten.local/contracts/manifest/1.0.0/schema.json",
+  "title": "Setzkasten Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "project",
+    "fonts",
+    "license_instances",
+    "licensees"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "name"
+      ],
+      "properties": {
+        "project_id": {
+          "$ref": "../license-spec/schema.json#/$defs/ID"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string"
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "licensees": {
+      "type": "array",
+      "items": {
+        "$ref": "../license-spec/schema.json#/$defs/Licensee"
+      },
+      "minItems": 1
+    },
+    "fonts": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "font_id",
+          "family_name",
+          "source",
+          "license_instance_ids"
+        ],
+        "properties": {
+          "font_id": {
+            "$ref": "../license-spec/schema.json#/$defs/ID"
+          },
+          "family_name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oss",
+                  "byo"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "uri": {
+                "type": "string",
+                "format": "uri"
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Freies Feld f\u00fcr Scan-Ergebnisse (Paths, Domains, Contexts)."
+          },
+          "active_license_instance_id": {
+            "$ref": "../license-spec/schema.json#/$defs/ID"
+          },
+          "license_instance_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "../license-spec/schema.json#/$defs/ID"
+            },
+            "minItems": 0
+          }
+        }
+      }
+    },
+    "license_offerings": {
+      "type": "array",
+      "items": {
+        "$ref": "../license-spec/schema.json#/$defs/LicenseOffering"
+      }
+    },
+    "license_instances": {
+      "type": "array",
+      "items": {
+        "$ref": "../license-spec/schema.json#/$defs/LicenseInstance"
+      },
+      "minItems": 0
+    }
+  }
+}

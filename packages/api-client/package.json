@@ -1,0 +1,13 @@
+{
+  "name": "@setzkasten/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "echo \"TODO: build @setzkasten/api-client\" && exit 0",
+    "test": "echo \"TODO: test @setzkasten/api-client\" && exit 0",
+    "lint": "echo \"TODO: lint @setzkasten/api-client\" && exit 0"
+  }
+}

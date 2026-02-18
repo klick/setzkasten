@@ -1,0 +1,66 @@
+{
+  "kind": "instance",
+  "license_id": "lic_001",
+  "licensee_id": "org_acme",
+  "licensee": {
+    "licensee_id": "org_acme",
+    "type": "organization",
+    "legal_name": "ACME GmbH",
+    "country": "DE",
+    "vat_id": "DE123456789"
+  },
+  "offering_ref": {
+    "offering_id": "foundry.example.web_indie",
+    "offering_version": "1.0.0"
+  },
+  "scope": {
+    "scope_type": "project",
+    "scope_id": "proj_landing",
+    "domains": [
+      "example.com"
+    ]
+  },
+  "font_refs": [
+    {
+      "font_id": "font_example_sans",
+      "family_name": "Example Sans",
+      "foundry_name": "Example Foundry",
+      "styles": [
+        "Regular",
+        "Bold"
+      ]
+    }
+  ],
+  "activated_right_ids": [
+    "r.web",
+    "r.self_host",
+    "r.formats",
+    "r.mod"
+  ],
+  "metric_limits": [
+    {
+      "metric_type": "pageviews",
+      "limit": 100000,
+      "period": "per_month"
+    },
+    {
+      "metric_type": "domains",
+      "limit": 1,
+      "period": "lifetime"
+    }
+  ],
+  "status": "active",
+  "valid_from": "2026-02-15T00:00:00Z",
+  "evidence": [
+    {
+      "evidence_id": "ev_invoice_001",
+      "type": "invoice",
+      "issuer": "Example Foundry",
+      "reference": "INV-2026-0001",
+      "purchased_at": "2026-02-15T00:00:00Z",
+      "document_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "document_name": "invoice.pdf"
+    }
+  ],
+  "acquisition_source": "direct_foundry"
+}

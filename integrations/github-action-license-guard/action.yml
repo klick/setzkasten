@@ -1,0 +1,10 @@
+name: "Setzkasten License Guard"
+description: "Validate LICENSE_MANIFEST.json and run policy checks"
+inputs:
+  manifest_path:
+    description: "Path to LICENSE_MANIFEST.json"
+    required: false
+    default: "LICENSE_MANIFEST.json"
+runs:
+  using: "node20"
+  main: "dist/index.js"

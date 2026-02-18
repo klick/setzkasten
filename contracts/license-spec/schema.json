@@ -1,0 +1,589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://setzkasten.local/contracts/license-spec/1.0.0/schema.json",
+  "title": "Setzkasten License Spec",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/LicenseOffering"
+    },
+    {
+      "$ref": "#/$defs/LicenseInstance"
+    }
+  ],
+  "$defs": {
+    "Semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "ID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "ISODateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "SHA256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "Licensee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "licensee_id",
+        "type",
+        "legal_name"
+      ],
+      "properties": {
+        "licensee_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "individual",
+            "organization",
+            "agency",
+            "client",
+            "other"
+          ]
+        },
+        "legal_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "country": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2,
+          "description": "ISO 3166-1 alpha-2"
+        },
+        "vat_id": {
+          "type": "string"
+        },
+        "contact_email": {
+          "type": "string",
+          "format": "email"
+        }
+      }
+    },
+    "FontRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "font_id",
+        "family_name"
+      ],
+      "properties": {
+        "font_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "family_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "foundry_name": {
+          "type": "string"
+        },
+        "styles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional: eingeschr\u00e4nkte Style-/Schnitt-Auswahl"
+        }
+      }
+    },
+    "Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_type",
+        "scope_id"
+      ],
+      "properties": {
+        "scope_type": {
+          "type": "string",
+          "enum": [
+            "project",
+            "brand",
+            "org",
+            "client"
+          ]
+        },
+        "scope_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "Right": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "right_id",
+        "right_type"
+      ],
+      "properties": {
+        "right_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "right_type": {
+          "type": "string",
+          "enum": [
+            "media_web",
+            "media_app",
+            "media_desktop",
+            "media_print",
+            "media_ebook",
+            "media_server",
+            "media_broadcast",
+            "distribution_self_hosting",
+            "distribution_cdn_hosting",
+            "distribution_app_embedding",
+            "distribution_server_embedding",
+            "modification",
+            "client_work",
+            "redistribution",
+            "formats"
+          ]
+        },
+        "allowed": {
+          "type": "boolean",
+          "default": true
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2
+          },
+          "description": "Optional: Regions/Geografie pro Recht"
+        },
+        "modification_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "subset",
+              "convert",
+              "rename",
+              "hinting",
+              "glyph_edits"
+            ]
+          },
+          "description": "Nur f\u00fcr right_type=modification"
+        },
+        "allowed_formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "woff2",
+              "woff",
+              "ttf",
+              "otf",
+              "eot",
+              "svg",
+              "variable"
+            ]
+          },
+          "description": "Nur f\u00fcr right_type=formats"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "MetricModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_type",
+        "allowed_periods"
+      ],
+      "properties": {
+        "metric_type": {
+          "type": "string",
+          "enum": [
+            "pageviews",
+            "unique_visitors",
+            "impressions",
+            "seats",
+            "installs",
+            "domains",
+            "print_run",
+            "revenue_band"
+          ]
+        },
+        "allowed_periods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "per_month",
+              "per_year",
+              "lifetime",
+              "per_release"
+            ]
+          }
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        }
+      }
+    },
+    "MetricLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_type",
+        "limit",
+        "period"
+      ],
+      "properties": {
+        "metric_type": {
+          "type": "string",
+          "enum": [
+            "pageviews",
+            "unique_visitors",
+            "impressions",
+            "seats",
+            "installs",
+            "domains",
+            "print_run",
+            "revenue_band"
+          ]
+        },
+        "limit": {
+          "type": "number"
+        },
+        "period": {
+          "type": "string",
+          "enum": [
+            "per_month",
+            "per_year",
+            "lifetime",
+            "per_release"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "PriceFormula": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "base_price"
+      ],
+      "properties": {
+        "currency": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 3
+        },
+        "base_price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "when",
+              "multiplier"
+            ],
+            "properties": {
+              "when": {
+                "type": "object",
+                "description": "Predicate over metric limits; deterministic."
+              },
+              "multiplier": {
+                "type": "number",
+                "minimum": 0
+              },
+              "add": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "description": "Deterministische Preisregeln"
+        }
+      }
+    },
+    "UpgradePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "to_offering_id",
+        "to_offering_version",
+        "pricing_mode"
+      ],
+      "properties": {
+        "to_offering_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "to_offering_version": {
+          "$ref": "#/$defs/Semver"
+        },
+        "pricing_mode": {
+          "type": "string",
+          "enum": [
+            "difference",
+            "fixed"
+          ]
+        },
+        "fixed_price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "type",
+        "document_hash"
+      ],
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "invoice",
+            "receipt",
+            "contract",
+            "email",
+            "other"
+          ]
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string",
+          "description": "Rechnungsnummer/Vertragsreferenz"
+        },
+        "purchased_at": {
+          "$ref": "#/$defs/ISODateTime"
+        },
+        "document_hash": {
+          "$ref": "#/$defs/SHA256"
+        },
+        "document_name": {
+          "type": "string"
+        },
+        "document_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "OfferingRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offering_id",
+        "offering_version"
+      ],
+      "properties": {
+        "offering_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "offering_version": {
+          "$ref": "#/$defs/Semver"
+        }
+      }
+    },
+    "LicenseOffering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "offering_id",
+        "offering_version",
+        "offering_type",
+        "name",
+        "rights",
+        "metric_models",
+        "price_formula"
+      ],
+      "properties": {
+        "kind": {
+          "const": "offering"
+        },
+        "offering_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "offering_version": {
+          "$ref": "#/$defs/Semver"
+        },
+        "offering_type": {
+          "type": "string",
+          "enum": [
+            "commercial",
+            "trial"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "rights": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Right"
+          },
+          "minItems": 1
+        },
+        "metric_models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MetricModel"
+          }
+        },
+        "price_formula": {
+          "$ref": "#/$defs/PriceFormula"
+        },
+        "upgrade_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UpgradePath"
+          }
+        },
+        "meta": {
+          "type": "object",
+          "description": "Optional metadata (scripts, OT features, axes)."
+        }
+      }
+    },
+    "LicenseInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "license_id",
+        "licensee_id",
+        "offering_ref",
+        "scope",
+        "font_refs",
+        "activated_right_ids",
+        "status",
+        "evidence",
+        "acquisition_source"
+      ],
+      "properties": {
+        "kind": {
+          "const": "instance"
+        },
+        "license_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "licensee_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "licensee": {
+          "$ref": "#/$defs/Licensee"
+        },
+        "offering_ref": {
+          "$ref": "#/$defs/OfferingRef"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "font_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FontRef"
+          },
+          "minItems": 1
+        },
+        "activated_right_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 1
+        },
+        "metric_limits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MetricLimit"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "expired",
+            "superseded",
+            "revoked"
+          ]
+        },
+        "valid_from": {
+          "$ref": "#/$defs/ISODateTime"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/ISODateTime"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 1
+        },
+        "acquisition_source": {
+          "type": "string",
+          "enum": [
+            "direct_foundry",
+            "reseller",
+            "marketplace",
+            "legacy"
+          ]
+        },
+        "upgrades_from": {
+          "$ref": "#/$defs/ID"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

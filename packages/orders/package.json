@@ -1,0 +1,13 @@
+{
+  "name": "@setzkasten/orders",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "echo \"TODO: build @setzkasten/orders\" && exit 0",
+    "test": "echo \"TODO: test @setzkasten/orders\" && exit 0",
+    "lint": "echo \"TODO: lint @setzkasten/orders\" && exit 0"
+  }
+}

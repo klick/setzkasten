@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info:
+  title: Setzkasten API (placeholder)
+  version: 0.1.0
+  description: >
+    Optional backend API. V1 ist CLI-first und offline.
+    Diese Spezifikation ist ein Platzhalter für spätere Phasen.
+paths: {}
