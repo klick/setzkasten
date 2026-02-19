@@ -1,27 +1,39 @@
 # Setzkasten
 
-Setzkasten ist ein CLI-first Tool für Fonts, Lizenzen und Nachweisführung im Projekt.
-Fokus V1: Ordnung, Auditierbarkeit, Policies, deterministische Quotes. Kein Marketplace.
+Setzkasten is a CLI-first tool for font license governance, auditability, and deterministic policy/quote checks.
+V1 focus: reliable project records and offline-first workflows. No marketplace.
 
-## V1 Grenzen
-- Nur Open-Source-Fonts und „Bring your own font“ (BYO).
-- Kein Hosting oder Ausliefern proprietärer Font-Dateien.
-- Kein proprietäres Font-Preview.
-- Scans nur für kontrollierte Assets (Repo-Zugriff / Domain-Verifikation).
-- Keine Rechtsberatung.
+## V1 Boundaries
+- Open-source fonts and BYO (bring your own) only.
+- No hosting or distribution of proprietary font files.
+- No proprietary font preview.
+- Scans only for controlled assets (local repo / verified domains interface).
+- Not legal advice.
 
-## Schnellstart (geplant)
+## Quick Start
 ```bash
-npm install
 npm run build
-node packages/cli/dist/index.js init
+node packages/cli/src/index.js init
+node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
+node packages/cli/src/index.js scan
+node packages/cli/src/index.js policy
+node packages/cli/src/index.js quote
 ```
 
-## Dokumentation
-- Entscheidungen: `docs/adr/000-project-foundations.md`
-- V1 Feature Cut: `docs/specs/v1-feature-set.md`
-- Lizenzschema (Konzept): `docs/specs/license-schema.md`
+## CLI V1
+- `init`
+- `add`
+- `remove`
+- `scan`
+- `policy`
+- `quote`
+- `migrate` (stub)
+
+## Documentation
+- Decisions: `docs/adr/000-project-foundations.md`
+- V1 feature cut: `docs/specs/v1-feature-set.md`
+- License schema (concept): `docs/specs/license-schema.md`
 - JSON Schemas: `contracts/`
 
-## Lizenz
-Siehe `LICENSE`.
+## License
+See `LICENSE`.

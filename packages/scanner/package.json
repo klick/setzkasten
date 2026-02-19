@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.js",
   "scripts": {
-    "build": "echo \"TODO: build @setzkasten/scanner\" && exit 0",
-    "test": "echo \"TODO: test @setzkasten/scanner\" && exit 0",
-    "lint": "echo \"TODO: lint @setzkasten/scanner\" && exit 0"
+    "build": "node --check src/index.js",
+    "test": "node --test \"src/**/*.test.js\"",
+    "lint": "node --check src/index.js"
   }
 }

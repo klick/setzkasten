@@ -1,13 +1,38 @@
 {
   "name": "@setzkasten/cli",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.0-rc.1",
+  "description": "Setzkasten CLI for font license governance and audit trails.",
+  "private": false,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "bin": {
+    "setzkasten": "src/index.js"
+  },
+  "main": "src/index.js",
+  "files": [
+    "src/index.js",
+    "src/lib/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "echo \"TODO: build @setzkasten/cli\" && exit 0",
-    "test": "echo \"TODO: test @setzkasten/cli\" && exit 0",
-    "lint": "echo \"TODO: lint @setzkasten/cli\" && exit 0"
+    "build": "node --check src/index.js && node --check src/lib/*.js",
+    "test": "node --test \"src/**/*.test.js\"",
+    "lint": "node --check src/index.js && node --check src/lib/*.js",
+    "pack:dry-run": "npm pack --dry-run --json",
+    "prepublishOnly": "npm run build && npm run lint"
+  },
+  "keywords": [
+    "fonts",
+    "license",
+    "governance",
+    "audit",
+    "cli"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
