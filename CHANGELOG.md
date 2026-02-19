@@ -3,6 +3,10 @@
 ## Unreleased
 - No changes yet.
 
+## 0.1.0-rc.2 - 2026-02-19
+- Fixed CLI silent no-op when executed via npm/local symlinked bin (`npx setzkasten ...`).
+- Added regression test for symlink/bin-style invocation in CLI package.
+
 ## 0.1.0-rc.1 - 2026-02-19
 - Implemented V1 CLI command set: `init`, `add`, `remove`, `scan`, `policy`, `quote`, `migrate` (stub).
 - Added local project state contracts:

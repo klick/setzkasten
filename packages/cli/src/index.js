@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { MANIFEST_FILENAME, parseListFlag, slugifyId } from "./lib/core.js";
 import { appendProjectEvent } from "./lib/events.js";
 import {
@@ -493,7 +494,13 @@ function isMainModule(importMetaUrl) {
     return false;
   }
 
-  return pathToFileURL(entry).href === importMetaUrl;
+  try {
+    const entryResolvedPath = realpathSync(entry);
+    const currentFileResolvedPath = realpathSync(fileURLToPath(importMetaUrl));
+    return entryResolvedPath === currentFileResolvedPath;
+  } catch {
+    return false;
+  }
 }
 
 if (isMainModule(import.meta.url)) {
