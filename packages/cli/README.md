@@ -20,7 +20,7 @@ npm install -g @setzkasten/cli
 ```bash
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
-setzkasten scan --path .
+setzkasten scan --path . --discover
 setzkasten policy
 setzkasten quote
 setzkasten migrate

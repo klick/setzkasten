@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @setzkasten/core && npm run build -w @setzkasten/manifest-lib && npm run build -w @setzkasten/events && npm run build -w @setzkasten/scanner && npm run build -w @setzkasten/policy && npm run build -w @setzkasten/quote && npm run build -w @setzkasten/cli",
-    "test": "npm run build && npm run test -w @setzkasten/manifest-lib && npm run test -w @setzkasten/events && npm run test -w @setzkasten/policy && npm run test -w @setzkasten/quote && npm run test -w @setzkasten/cli && npm run validate:contracts",
+    "test": "npm run build && npm run test -w @setzkasten/manifest-lib && npm run test -w @setzkasten/events && npm run test -w @setzkasten/scanner && npm run test -w @setzkasten/policy && npm run test -w @setzkasten/quote && npm run test -w @setzkasten/cli && npm run validate:contracts",
     "lint": "npm run lint -w @setzkasten/core && npm run lint -w @setzkasten/manifest-lib && npm run lint -w @setzkasten/events && npm run lint -w @setzkasten/scanner && npm run lint -w @setzkasten/policy && npm run lint -w @setzkasten/quote && npm run lint -w @setzkasten/cli",
     "validate:contracts": "node scripts/validate-contracts.js",
     "release:cli:check": "node scripts/release-cli-check.js",

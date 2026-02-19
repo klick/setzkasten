@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { nowIso } from "../../core/src/index.js";
+import { nowIso, slugifyId } from "../../core/src/index.js";
 
 const DEFAULT_IGNORED_DIRS = new Set([
   ".git",
@@ -30,6 +30,29 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".txt",
 ]);
 
+const FONT_FILE_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf", ".otc"]);
+
+const STYLE_TOKENS = new Set([
+  "regular",
+  "italic",
+  "bold",
+  "black",
+  "light",
+  "thin",
+  "medium",
+  "semibold",
+  "extrabold",
+  "ultrabold",
+  "book",
+  "display",
+  "condensed",
+  "narrow",
+  "expanded",
+  "variable",
+  "var",
+  "vf",
+]);
+
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -43,8 +66,14 @@ function shouldScanFile(filePath) {
   return TEXT_FILE_EXTENSIONS.has(extension);
 }
 
-async function collectScanFiles(rootPath) {
-  const files = [];
+function shouldDiscoverFontFile(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  return FONT_FILE_EXTENSIONS.has(extension);
+}
+
+async function collectProjectFiles(rootPath) {
+  const textFiles = [];
+  const fontFiles = [];
 
   async function walk(dirPath) {
     const entries = await readdir(dirPath, { withFileTypes: true });
@@ -66,21 +95,29 @@ async function collectScanFiles(rootPath) {
         continue;
       }
 
-      if (!entry.isFile() || !shouldScanFile(fullPath)) {
+      if (!entry.isFile()) {
         continue;
       }
 
-      const fileStat = await stat(fullPath);
-      if (fileStat.size > 2 * 1024 * 1024) {
-        continue;
+      if (shouldScanFile(fullPath)) {
+        const fileStat = await stat(fullPath);
+        if (fileStat.size <= 2 * 1024 * 1024) {
+          textFiles.push(fullPath);
+        }
       }
 
-      files.push(fullPath);
+      if (shouldDiscoverFontFile(fullPath)) {
+        fontFiles.push(fullPath);
+      }
     }
   }
 
   await walk(rootPath);
-  return files;
+
+  return {
+    textFiles,
+    fontFiles,
+  };
 }
 
 function relativeTo(rootPath, targetPath) {
@@ -88,9 +125,60 @@ function relativeTo(rootPath, targetPath) {
   return relativePath.length > 0 ? relativePath : ".";
 }
 
+function toTitleCaseToken(token) {
+  if (token.length === 0) {
+    return token;
+  }
+
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+}
+
+function guessFamilyNameFromFile(filePath) {
+  const extension = path.extname(filePath);
+  const rawName = path.basename(filePath, extension);
+  const normalized = rawName.replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (normalized.length === 0) {
+    return rawName;
+  }
+
+  const tokens = normalized.split(" ").map((token) => token.trim()).filter(Boolean);
+
+  while (tokens.length > 1) {
+    const lastToken = tokens[tokens.length - 1].toLowerCase();
+    if (!STYLE_TOKENS.has(lastToken)) {
+      break;
+    }
+    tokens.pop();
+  }
+
+  return tokens.map((token) => toTitleCaseToken(token)).join(" ");
+}
+
+function discoverFontFiles(rootPath, fontFiles, maxDiscoveredFiles) {
+  return fontFiles
+    .map((filePath) => {
+      const extension = path.extname(filePath).toLowerCase();
+      const relativePath = relativeTo(rootPath, filePath);
+      const familyGuess = guessFamilyNameFromFile(filePath);
+
+      return {
+        path: relativePath,
+        extension,
+        file_name: path.basename(filePath),
+        family_guess: familyGuess,
+        font_id_guess: slugifyId(familyGuess || path.basename(filePath, extension), "font"),
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .slice(0, maxDiscoveredFiles);
+}
+
 export async function scanProject(input) {
   const rootPath = path.resolve(input.rootPath);
   const maxMatchedPathsPerFont = input.maxMatchedPathsPerFont ?? 30;
+  const discover = input.discover === true;
+  const maxDiscoveredFiles = input.maxDiscoveredFiles ?? 200;
 
   const fonts = normalizeFonts(input.manifest)
     .map((font) => ({
@@ -99,7 +187,7 @@ export async function scanProject(input) {
     }))
     .filter((font) => font.font_id.length > 0 && font.family_name.length > 0);
 
-  const files = await collectScanFiles(rootPath);
+  const { textFiles, fontFiles } = await collectProjectFiles(rootPath);
   const matches = new Map();
 
   for (const font of fonts) {
@@ -111,7 +199,7 @@ export async function scanProject(input) {
     });
   }
 
-  for (const filePath of files) {
+  for (const filePath of textFiles) {
     let content;
 
     try {
@@ -142,8 +230,9 @@ export async function scanProject(input) {
   return {
     scanned_at: nowIso(),
     root_path: rootPath,
-    scanned_files_count: files.length,
+    scanned_files_count: textFiles.length,
     font_matches: Object.fromEntries(Array.from(matches.entries())),
+    discovered_font_files: discover ? discoverFontFiles(rootPath, fontFiles, maxDiscoveredFiles) : [],
   };
 }
 

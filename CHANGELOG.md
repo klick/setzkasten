@@ -3,6 +3,12 @@
 ## Unreleased
 - No changes yet.
 
+## 0.1.0-rc.3 - 2026-02-19
+- Added `scan --discover` to find existing local font files (`.woff2`, `.woff`, `.ttf`, `.otf`, `.otc`).
+- Added discovery result output with path, extension, file name, family guess, and font ID guess.
+- Added scanner package regression tests for discovery behavior.
+- Added CLI integration test for `scan --discover`.
+
 ## 0.1.0-rc.2 - 2026-02-19
 - Fixed CLI silent no-op when executed via npm/local symlinked bin (`npx setzkasten ...`).
 - Added regression test for symlink/bin-style invocation in CLI package.

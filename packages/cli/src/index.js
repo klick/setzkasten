@@ -28,17 +28,22 @@ Commands:
   init      Create ${MANIFEST_FILENAME} and .setzkasten/events.log
   add       Add font entry to manifest
   remove    Remove font entry from manifest
-  scan      Scan local repository usage and update manifest usage fields
+  scan      Scan local repository usage and optionally discover font files
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
   migrate   Generate migration stub plan
 
 Common options:
   --manifest <path>   Explicit path to ${MANIFEST_FILENAME}
+Scan options:
+  --path <dir>                 Directory to scan (default: project root)
+  --discover                   Discover existing font files (woff2/woff/ttf/otf/otc)
+  --max-discovered-files <n>   Max discovered files in output (default: 200)
 
 Examples:
   setzkasten init --name "Acme Project"
   setzkasten add --font-id inter --family "Inter" --source oss
+  setzkasten scan --path . --discover
   setzkasten policy --fail-on escalate
 `;
 
@@ -333,11 +338,15 @@ async function handleScan(cwd, flags) {
 
   const scanRoot = path.resolve(cwd, getStringFlag(flags, "path") ?? projectRoot);
   const maxMatchedPaths = Number(getStringFlag(flags, "max-matched-paths") ?? "30");
+  const maxDiscoveredFiles = Number(getStringFlag(flags, "max-discovered-files") ?? "200");
+  const discover = getBooleanFlag(flags, "discover");
 
   const scanResult = await scanProject({
     rootPath: scanRoot,
     manifest,
     maxMatchedPathsPerFont: Number.isFinite(maxMatchedPaths) ? maxMatchedPaths : 30,
+    maxDiscoveredFiles: Number.isFinite(maxDiscoveredFiles) ? maxDiscoveredFiles : 200,
+    discover,
   });
 
   const updatedManifest = applyScanResultToManifest(manifest, scanResult);
@@ -350,6 +359,10 @@ async function handleScan(cwd, flags) {
     payload: {
       scanned_at: scanResult.scanned_at,
       scanned_files_count: scanResult.scanned_files_count,
+      discovered_font_files_count: Array.isArray(scanResult.discovered_font_files)
+        ? scanResult.discovered_font_files.length
+        : 0,
+      discover_enabled: discover,
       root_path: scanResult.root_path,
     },
   });
