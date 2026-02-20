@@ -1,16 +1,30 @@
 # Setzkasten
 
-Setzkasten is a CLI-first tool for font license governance, auditability, and deterministic policy/quote checks.
-V1 focus: reliable project records and offline-first workflows. No marketplace.
+Setzkasten is a CLI-first tool for font license governance, auditability, and deterministic policy and quote checks.
+V1 focuses on reliable project records and offline-first workflows. There is no marketplace in V1.
 
 ## V1 Boundaries
-- Open-source fonts and BYO (bring your own) only.
+- Open-source fonts and BYO (bring your own fonts) only.
 - No hosting or distribution of proprietary font files.
 - No proprietary font preview.
-- Scans only for controlled assets (local repo / verified domains interface).
+- Scans only controlled assets (local repositories or verified-domain workflows).
 - Not legal advice.
 
-## Quick Start
+## Install
+```bash
+npm install -g @setzkasten/cli
+```
+
+## Quick Start (Global Install)
+```bash
+setzkasten init --name "My Project"
+setzkasten add --font-id inter --family "Inter" --source oss
+setzkasten scan --path . --discover
+setzkasten policy
+setzkasten quote
+```
+
+## Quick Start (Repository Source)
 ```bash
 npm run build
 node packages/cli/src/index.js init
