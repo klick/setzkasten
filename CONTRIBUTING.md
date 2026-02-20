@@ -1,13 +1,13 @@
 # Contributing
 
-Fokus: V1 CLI-first. Bitte die ADRs und Specs lesen, bevor du größere Änderungen machst.
+Focus: V1 is CLI-first. Please read the ADRs and specs before making larger changes.
 
 ## Workflow
-- Kleine PRs, klarer Scope.
-- Tests müssen grün sein.
-- Keine neuen Dependencies ohne Begründung.
+- Keep PRs small with a clear scope.
+- Tests must pass.
+- Do not add new dependencies without a clear justification.
 
-## Wichtige Dateien
-- `docs/adr/000-project-foundations.md` (Entscheidungen)
-- `docs/specs/v1-feature-set.md` (V1 Cut)
-- `contracts/` (Schemas – Source of Truth)
+## Important Files
+- `docs/adr/000-project-foundations.md` (decisions)
+- `docs/specs/v1-feature-set.md` (V1 scope cut)
+- `contracts/` (schemas, source of truth)
