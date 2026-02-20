@@ -1,4 +1,4 @@
-# GitHub Action – License Guard (placeholder)
+# GitHub Action - License Guard (placeholder)
 
-Ziel: PR Checks für Manifest/Policy.
-V1: optional, kann später aktiviert werden.
+Goal: PR checks for manifest/policy.
+V1: optional, can be enabled later.

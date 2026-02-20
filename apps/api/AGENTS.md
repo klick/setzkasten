@@ -1,4 +1,4 @@
 # API App (placeholder)
 
-V1 ist offline. API ist optional und wird später umgesetzt.
-Dieses Verzeichnis existiert für die spätere B2B-Phase.
+V1 is offline. The API is optional and will be implemented later.
+This directory exists for the later B2B phase.

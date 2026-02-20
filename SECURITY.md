@@ -1,8 +1,8 @@
 # Security
 
-Setzkasten verarbeitet Informationen zu Fonts und Lizenzen. Grundsatz:
-- Keine proprietären Font-Dateien hosten oder ausliefern.
-- Evidence: keine fremden Lizenzdokumente kopieren; nur Hash + Metadaten.
+Setzkasten processes information about fonts and licenses. Core principle:
+- Do not host or distribute proprietary font files.
+- Evidence: do not copy third-party license documents; store hash plus metadata only.
 
-## Meldung von Sicherheitslücken
-Bitte per privatem Kanal melden (noch kein Public-Programm im Scaffold).
+## Reporting Security Issues
+Please report through a private channel (no public program in this scaffold yet).
