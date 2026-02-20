@@ -1,6 +1,6 @@
 {
   "name": "@setzkasten/cli",
-  "version": "0.1.0-rc.3",
+  "version": "0.1.0-rc.4",
   "description": "Setzkasten CLI for font license governance and audit trails.",
   "private": false,
   "type": "module",
@@ -28,6 +28,15 @@
     "audit",
     "cli"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klick/setzkasten.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/klick/setzkasten/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/klick/setzkasten/issues"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=20"
