@@ -1,18 +1,18 @@
-# Usage Interface (V1: Contract only)
+# Usage Interface (V1: Contract Only)
 
-V1 misst keine Nutzung. Es wird nur definiert, wie Nutzung später zugeführt werden kann.
+V1 does not measure usage automatically. It only defines how usage can be supplied later.
 
-## Grundsatz
-- Vertrag (License Instance) bleibt immutable.
-- Nutzung ist ein separater Input: Metrikwerte pro Zeitraum und Scope.
+## Principle
+- Contract (`License Instance`) remains immutable.
+- Usage is a separate input: metric values per time period and scope.
 
-## Beispiel Input
+## Example Input
 - `scope_type`, `scope_id`
-- `metric_type` (pageviews|seats|installs|print_run|...)
+- `metric_type` (`pageviews` | `seats` | `installs` | `print_run` | ...)
 - `value`
 - `period_start`, `period_end`
-- `source` (manual_import|analytics|hr|...)
-- `evidence` optional (z. B. Link auf Report)
+- `source` (`manual_import` | `analytics` | `hr` | ...)
+- optional `evidence` (for example a report link)
 
-## Verwendung
-- Policy Engine vergleicht `value` gegen `metric_limits`.
+## Usage
+- Policy engine compares `value` against `metric_limits`.

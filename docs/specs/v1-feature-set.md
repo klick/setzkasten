@@ -1,42 +1,42 @@
 # V1 Feature Set (Final Cut)
 
-Ziel: Developer-Workflow für legale, auditierbare Font-Nutzung im Projekt.
+Goal: developer workflow for lawful, auditable font usage in projects.
 
 ## In Scope (V1)
 ### CLI Commands
 - `setzkasten init`
-  - erzeugt `LICENSE_MANIFEST.json`
-  - erzeugt `.setzkasten/events.log` (NDJSON)
+  - creates `LICENSE_MANIFEST.json`
+  - creates `.setzkasten/events.log` (NDJSON)
 - `setzkasten add`
-  - fügt einen Font-Eintrag hinzu (OSS oder BYO)
-  - aktualisiert Manifest + Event-Log
+  - adds a font entry (OSS or BYO)
+  - updates manifest + event log
 - `setzkasten remove`
-  - entfernt einen Font-Eintrag
-  - Event-Log Eintrag
+  - removes a font entry
+  - writes an event log entry
 - `setzkasten scan`
-  - Repo-Scan (lokal)
-  - Domain-Scan nur nach Domain-Verifikation (Interface vorbereitet)
+  - local repository scan
+  - domain scan only after domain verification (interface prepared)
 - `setzkasten policy`
-  - Policy Evaluation: allow / warn / escalate
+  - policy evaluation: `allow` / `warn` / `escalate`
 - `setzkasten quote`
-  - deterministische Quote-Berechnung auf Basis des Lizenzschemas
+  - deterministic quote calculation based on the license schema
 - `setzkasten migrate`
-  - Migrationsgerüst für Manifest und Lizenzschema
+  - migration scaffold for manifest and license schema
 
-### Datenmodelle
-- Manifest (Source of Truth)
-- Lizenzschema v1.0.0 (Offering + Instance)
-- Event-Log (append-only)
+### Data Models
+- Manifest (source of truth)
+- License schema v1.0.0 (offering + instance)
+- Event log (append-only)
 
-### Telemetrie
-- optional, opt-in, anonymisiert (nur für Produkt-Verbesserung)
+### Telemetry
+- Optional, opt-in, anonymized (product improvement only)
 - Default: off
 
 ## Out of Scope (V1)
-- Marketplace / Checkout / Payment
-- Hosting oder Auslieferung proprietärer Font-Dateien
-- Proprietäres Font-Preview
-- Rollenmodell (Owner/Approver) und Approval-Flows
-- Order-State-Machine (Intent/Approval/Capture)
-- automatische Nutzungsmessung (Traffic/Seats)
-- öffentliche Standardisierung des Lizenzschemas
+- Marketplace / checkout / payment
+- Hosting or distribution of proprietary font files
+- Proprietary font preview
+- Role model (`owner`/`approver`) and approval flows
+- Order state machine (`intent`/`approval`/`capture`)
+- Automatic usage measurement (traffic/seats)
+- Public standardization of the license schema

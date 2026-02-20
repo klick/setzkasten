@@ -1,13 +1,13 @@
 # Non-Goals
 
-Diese Punkte sind bewusst nicht Teil von V1:
+These items are intentionally out of scope for V1:
 
-- Kein Marketplace.
-- Kein Reselling/Distribution von Fonts.
-- Kein Hosting proprietärer Font-Dateien.
-- Kein proprietäres Preview (Rendering/Hosting).
-- Kein allgemeines Web-Crawling.
-- Keine Rechtsberatung.
-- Kein Rollenmodell/Approval in V1.
-- Keine Order-State-Machine in V1.
-- Keine automatische Traffic-/Seat-Messung in V1.
+- No marketplace.
+- No font reselling/distribution.
+- No hosting of proprietary font files.
+- No proprietary preview (rendering/hosting).
+- No general web crawling.
+- No legal advice.
+- No role model/approvals in V1.
+- No order state machine in V1.
+- No automatic traffic/seat measurement in V1.

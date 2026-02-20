@@ -1,13 +1,13 @@
 # Disclaimer
 
-Setzkasten ist ein technisches Tool zur Strukturierung von Informationen über Fonts und Lizenzen.
-Es ist keine Rechtsberatung und ersetzt keine juristische Prüfung.
+Setzkasten is a technical tool for structuring information about fonts and licenses.
+It is not legal advice and does not replace legal review.
 
-Setzkasten kann:
-- Hinweise geben (Policies/Warnungen)
-- Nachweise strukturieren (Evidence + Hash)
-- Nutzungssignale mit Limits vergleichen (wenn Daten vorhanden)
+Setzkasten can:
+- Provide signals (policies and warnings)
+- Structure evidence (evidence plus hash)
+- Compare usage signals against limits (when data is available)
 
-Setzkasten kann nicht:
-- verbindlich feststellen, ob eine Nutzung rechtmäßig ist
-- individuelle Vertragsklauseln juristisch auslegen
+Setzkasten cannot:
+- Provide binding legal conclusions about whether usage is lawful
+- Interpret individual contract clauses as legal counsel
