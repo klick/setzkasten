@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { nowIso, slugifyId } from "./core.js";
+import { nowIso, sha256Hex, slugifyId } from "./core.js";
 
 const DEFAULT_IGNORED_DIRS = new Set([
   ".git",
@@ -31,6 +31,8 @@ const TEXT_FILE_EXTENSIONS = new Set([
 ]);
 
 const FONT_FILE_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf", ".otc"]);
+const LICENSE_FILE_EXTENSIONS = new Set(["", ".txt", ".md", ".pdf", ".rtf", ".html", ".htm"]);
+const LICENSE_FILE_NAME_PATTERN = /(license|licence|eula|ofl|fontlog|copying|copyright)/i;
 
 const STYLE_TOKENS = new Set([
   "regular",
@@ -71,9 +73,26 @@ function shouldDiscoverFontFile(filePath) {
   return FONT_FILE_EXTENSIONS.has(extension);
 }
 
+function shouldDiscoverLicenseFile(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath).toLowerCase();
+
+  if (!LICENSE_FILE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  return LICENSE_FILE_NAME_PATTERN.test(fileName);
+}
+
+function isLikelyTextLicenseFile(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  return extension === "" || extension === ".txt" || extension === ".md" || extension === ".html" || extension === ".htm";
+}
+
 async function collectProjectFiles(rootPath) {
   const textFiles = [];
   const fontFiles = [];
+  const licenseFiles = [];
 
   async function walk(dirPath) {
     const entries = await readdir(dirPath, { withFileTypes: true });
@@ -109,6 +128,10 @@ async function collectProjectFiles(rootPath) {
       if (shouldDiscoverFontFile(fullPath)) {
         fontFiles.push(fullPath);
       }
+
+      if (shouldDiscoverLicenseFile(fullPath)) {
+        licenseFiles.push(fullPath);
+      }
     }
   }
 
@@ -117,6 +140,7 @@ async function collectProjectFiles(rootPath) {
   return {
     textFiles,
     fontFiles,
+    licenseFiles,
   };
 }
 
@@ -174,11 +198,103 @@ function discoverFontFiles(rootPath, fontFiles, maxDiscoveredFiles) {
     .slice(0, maxDiscoveredFiles);
 }
 
+function detectLicenseKind(fileName, contentLower) {
+  if (contentLower) {
+    if (
+      contentLower.includes("sil open font license") ||
+      contentLower.includes("ofl version 1.1") ||
+      contentLower.includes("scripts.sil.org/ofl")
+    ) {
+      return "sil_ofl_1_1";
+    }
+
+    if (contentLower.includes("apache license") && contentLower.includes("version 2.0")) {
+      return "apache_2_0";
+    }
+
+    if (contentLower.includes("mit license")) {
+      return "mit";
+    }
+
+    if (contentLower.includes("gnu general public license")) {
+      return "gpl";
+    }
+
+    if (contentLower.includes("mozilla public license")) {
+      return "mpl";
+    }
+
+    if (contentLower.includes("eula") || contentLower.includes("end user license agreement")) {
+      return "eula";
+    }
+  }
+
+  if (fileName.toLowerCase().includes("ofl")) {
+    return "sil_ofl_1_1";
+  }
+
+  if (fileName.toLowerCase().includes("eula")) {
+    return "eula";
+  }
+
+  return null;
+}
+
+function matchFontIdsFromLicenseContent(fonts, contentLower) {
+  if (!contentLower) {
+    return [];
+  }
+
+  return fonts
+    .filter((font) => contentLower.includes(font.family_name.toLowerCase()))
+    .map((font) => font.font_id)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function discoverLicenseFiles(rootPath, licenseFiles, fonts, maxDiscoveredLicenseFiles) {
+  const discovered = [];
+
+  for (const filePath of licenseFiles) {
+    let fileBuffer;
+    let fileStat;
+
+    try {
+      fileBuffer = await readFile(filePath);
+      fileStat = await stat(filePath);
+    } catch {
+      continue;
+    }
+
+    const extension = path.extname(filePath).toLowerCase();
+    const fileName = path.basename(filePath);
+    const relativePath = relativeTo(rootPath, filePath);
+    const contentLower =
+      isLikelyTextLicenseFile(filePath) && fileBuffer.length <= 512 * 1024
+        ? fileBuffer.toString("utf8").toLowerCase()
+        : null;
+
+    discovered.push({
+      path: relativePath,
+      extension,
+      file_name: fileName,
+      size_bytes: fileStat.size,
+      document_hash: sha256Hex(fileBuffer),
+      detected_license: detectLicenseKind(fileName, contentLower),
+      matched_font_ids: matchFontIdsFromLicenseContent(fonts, contentLower),
+    });
+  }
+
+  return discovered
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .slice(0, maxDiscoveredLicenseFiles);
+}
+
 export async function scanProject(input) {
   const rootPath = path.resolve(input.rootPath);
   const maxMatchedPathsPerFont = input.maxMatchedPathsPerFont ?? 30;
   const discover = input.discover === true;
   const maxDiscoveredFiles = input.maxDiscoveredFiles ?? 200;
+  const maxDiscoveredLicenseFiles = input.maxDiscoveredLicenseFiles ?? 200;
 
   const fonts = normalizeFonts(input.manifest)
     .map((font) => ({
@@ -187,7 +303,7 @@ export async function scanProject(input) {
     }))
     .filter((font) => font.font_id.length > 0 && font.family_name.length > 0);
 
-  const { textFiles, fontFiles } = await collectProjectFiles(rootPath);
+  const { textFiles, fontFiles, licenseFiles } = await collectProjectFiles(rootPath);
   const matches = new Map();
 
   for (const font of fonts) {
@@ -227,18 +343,38 @@ export async function scanProject(input) {
     }
   }
 
+  const discoveredLicenseFiles = discover
+    ? await discoverLicenseFiles(rootPath, licenseFiles, fonts, maxDiscoveredLicenseFiles)
+    : [];
+
   return {
     scanned_at: nowIso(),
     root_path: rootPath,
     scanned_files_count: textFiles.length,
     font_matches: Object.fromEntries(Array.from(matches.entries())),
     discovered_font_files: discover ? discoverFontFiles(rootPath, fontFiles, maxDiscoveredFiles) : [],
+    discovered_license_files: discoveredLicenseFiles,
   };
 }
 
 export function applyScanResultToManifest(manifest, scanResult) {
   const draft = deepClone(manifest);
   const fonts = Array.isArray(draft.fonts) ? draft.fonts : [];
+  const licenseMatchesByFont = new Map();
+
+  const discoveredLicenseFiles = Array.isArray(scanResult.discovered_license_files)
+    ? scanResult.discovered_license_files
+    : [];
+
+  for (const licenseFile of discoveredLicenseFiles) {
+    const matchedFontIds = Array.isArray(licenseFile.matched_font_ids) ? licenseFile.matched_font_ids : [];
+    for (const fontId of matchedFontIds) {
+      if (!licenseMatchesByFont.has(fontId)) {
+        licenseMatchesByFont.set(fontId, []);
+      }
+      licenseMatchesByFont.get(fontId).push(licenseFile.path);
+    }
+  }
 
   for (const font of fonts) {
     const fontId = typeof font.font_id === "string" ? font.font_id : "";
@@ -250,12 +386,16 @@ export function applyScanResultToManifest(manifest, scanResult) {
     const currentUsage =
       font.usage && typeof font.usage === "object" && !Array.isArray(font.usage) ? font.usage : {};
 
+    const matchedLicensePaths = licenseMatchesByFont.get(fontId) ?? [];
+
     font.usage = {
       ...currentUsage,
       scan: {
         scanned_at: scanResult.scanned_at,
         match_count: match?.match_count ?? 0,
         matched_paths: match?.matched_paths ?? [],
+        license_match_count: matchedLicensePaths.length,
+        license_matched_paths: matchedLicensePaths.slice(0, 30),
       },
     };
   }

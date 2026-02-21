@@ -23,9 +23,14 @@ Required fields:
 - `manifest.created`
 - `manifest.font_added`
 - `manifest.font_removed`
-- `manifest.license_ref_added`
+- `manifest.license_ref_added` (evidence hash linked or updated for a license instance)
 - `scan.completed`
 - `policy.ok`
 - `policy.warning_raised`
 - `quote.generated`
 - `migration.planned` (stub)
+
+`scan.completed` payload should include:
+- `discovered_font_files_count`
+- `discovered_license_files_count`
+- `discover_enabled`

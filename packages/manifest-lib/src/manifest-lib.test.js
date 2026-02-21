@@ -4,6 +4,7 @@ import {
   addFontToManifest,
   createManifest,
   removeFontFromManifest,
+  upsertLicenseEvidence,
   validateManifestDocument,
 } from "./index.js";
 
@@ -58,4 +59,60 @@ test("addFontToManifest and removeFontFromManifest update manifest entries", asy
 
   const fonts = removed.manifest.fonts;
   assert.equal(fonts.length, 0);
+});
+
+test("upsertLicenseEvidence attaches evidence to an existing license instance", async () => {
+  const manifest = createManifest({
+    projectName: "Evidence Project",
+  });
+
+  manifest.fonts.push({
+    font_id: "ibm-plex-sans",
+    family_name: "IBM Plex Sans",
+    source: { type: "byo" },
+    license_instance_ids: ["lic_plex_001"],
+    active_license_instance_id: "lic_plex_001",
+  });
+
+  manifest.license_instances.push({
+    kind: "instance",
+    license_id: "lic_plex_001",
+    licensee_id: manifest.licensees[0].licensee_id,
+    offering_ref: {
+      offering_id: "off_plex_web",
+      offering_version: "1.0.0",
+    },
+    scope: {
+      scope_type: "project",
+      scope_id: manifest.project.project_id,
+    },
+    font_refs: [
+      {
+        font_id: "ibm-plex-sans",
+        family_name: "IBM Plex Sans",
+      },
+    ],
+    activated_right_ids: ["media_web"],
+    status: "active",
+    evidence: [],
+    acquisition_source: "direct_foundry",
+  });
+
+  const validationBefore = await validateManifestDocument(manifest);
+  assert.equal(validationBefore.valid, true);
+
+  const result = upsertLicenseEvidence(manifest, {
+    licenseId: "lic_plex_001",
+    documentHash: "91c25c350d3cac39da2736d74f7ba37ef648f5237a4e330a240615bc8d8c4360",
+    documentName: "OFL.txt",
+    type: "other",
+  });
+
+  assert.equal(result.action, "added");
+  assert.equal(result.license_id, "lic_plex_001");
+  assert.equal(result.evidence.document_name, "OFL.txt");
+
+  const validationAfter = await validateManifestDocument(result.manifest);
+  assert.equal(validationAfter.valid, true);
+  assert.equal(result.manifest.license_instances[0].evidence.length, 1);
 });

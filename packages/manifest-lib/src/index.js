@@ -16,6 +16,7 @@ const SOURCE_TYPES = new Set(["oss", "byo"]);
 const OFFERING_TYPES = new Set(["commercial", "trial"]);
 const INSTANCE_STATUS = new Set(["active", "expired", "superseded", "revoked"]);
 const ACQUISITION_SOURCES = new Set(["direct_foundry", "reseller", "marketplace", "legacy"]);
+const SHA256_PATTERN = /^[A-Fa-f0-9]{64}$/;
 
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -164,7 +165,7 @@ function validateEvidence(errors, pathName, value) {
   });
   validateString(errors, `${pathName}.type`, value.type, { minLength: 1 });
   validateString(errors, `${pathName}.document_hash`, value.document_hash, {
-    pattern: /^[A-Fa-f0-9]{64}$/,
+    pattern: SHA256_PATTERN,
   });
 }
 
@@ -322,7 +323,7 @@ function validateLicenseInstance(errors, pathName, value) {
 
   validateString(errors, `${pathName}.status`, value.status, { enum: INSTANCE_STATUS });
 
-  const hasEvidence = validateArray(errors, `${pathName}.evidence`, value.evidence, { minItems: 1 });
+  const hasEvidence = validateArray(errors, `${pathName}.evidence`, value.evidence, { minItems: 0 });
   if (hasEvidence) {
     for (let index = 0; index < value.evidence.length; index += 1) {
       validateEvidence(errors, `${pathName}.evidence[${index}]`, value.evidence[index]);
@@ -556,6 +557,15 @@ function normalizeStringArray(value) {
   return value.filter((entry) => typeof entry === "string");
 }
 
+function normalizeOptionalString(value) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 export function addFontToManifest(manifest, font) {
   const draft = deepClone(manifest);
   const fonts = Array.isArray(draft.fonts) ? draft.fonts : [];
@@ -588,6 +598,137 @@ export function removeFontFromManifest(manifest, fontId) {
   return {
     manifest: draft,
     removed: filteredFonts.length !== fonts.length,
+  };
+}
+
+export function upsertLicenseEvidence(manifest, input) {
+  const licenseId = normalizeOptionalString(input?.licenseId);
+  if (!licenseId) {
+    throw new Error("licenseId is required.");
+  }
+
+  const documentHash = normalizeOptionalString(input?.documentHash);
+  if (!documentHash || !SHA256_PATTERN.test(documentHash)) {
+    throw new Error("documentHash must be a 64-char sha256 hex string.");
+  }
+
+  const draft = deepClone(manifest);
+  const instances = Array.isArray(draft.license_instances) ? draft.license_instances : [];
+  const instanceIndex = instances.findIndex(
+    (entry) => isObject(entry) && typeof entry.license_id === "string" && entry.license_id === licenseId,
+  );
+
+  if (instanceIndex < 0) {
+    throw new Error(`License instance '${licenseId}' not found in manifest.`);
+  }
+
+  const instance = instances[instanceIndex];
+  const currentEvidence = Array.isArray(instance.evidence) ? instance.evidence : [];
+
+  const evidenceType = normalizeOptionalString(input?.type) ?? "other";
+  const documentName =
+    normalizeOptionalString(input?.documentName) ??
+    normalizeOptionalString(input?.documentPath) ??
+    "license-document";
+  const requestedEvidenceId = normalizeOptionalString(input?.evidenceId);
+
+  if (requestedEvidenceId && !ID_PATTERN.test(requestedEvidenceId)) {
+    throw new Error("evidenceId has invalid format.");
+  }
+
+  const generatedEvidenceId = slugifyId(`${path.parse(documentName).name}-${documentHash.slice(0, 8)}`, "evidence");
+  const evidenceId = requestedEvidenceId ?? generatedEvidenceId;
+
+  const nextEvidence = {
+    evidence_id: evidenceId,
+    type: evidenceType,
+    document_hash: documentHash,
+  };
+
+  const reference = normalizeOptionalString(input?.reference);
+  if (reference) {
+    nextEvidence.reference = reference;
+  }
+
+  const issuer = normalizeOptionalString(input?.issuer);
+  if (issuer) {
+    nextEvidence.issuer = issuer;
+  }
+
+  const documentUrl = normalizeOptionalString(input?.documentUrl);
+  if (documentUrl) {
+    try {
+      new URL(documentUrl);
+    } catch {
+      throw new Error("documentUrl must be a valid URI.");
+    }
+    nextEvidence.document_url = documentUrl;
+  }
+
+  const purchasedAt = normalizeOptionalString(input?.purchasedAt);
+  if (purchasedAt) {
+    nextEvidence.purchased_at = purchasedAt;
+  }
+
+  const notes = normalizeOptionalString(input?.notes);
+  if (notes) {
+    nextEvidence.notes = notes;
+  }
+
+  const normalizedDocumentName = normalizeOptionalString(input?.documentName);
+  if (normalizedDocumentName) {
+    nextEvidence.document_name = normalizedDocumentName;
+  }
+
+  let action = "added";
+  let appliedEvidence = nextEvidence;
+
+  const byIdIndex = currentEvidence.findIndex(
+    (entry) => isObject(entry) && typeof entry.evidence_id === "string" && entry.evidence_id === evidenceId,
+  );
+
+  if (byIdIndex >= 0) {
+    appliedEvidence = {
+      ...currentEvidence[byIdIndex],
+      ...nextEvidence,
+    };
+    currentEvidence[byIdIndex] = appliedEvidence;
+    action = "updated";
+  } else {
+    const byHashIndex = currentEvidence.findIndex(
+      (entry) =>
+        isObject(entry) &&
+        typeof entry.document_hash === "string" &&
+        entry.document_hash.toLowerCase() === documentHash.toLowerCase(),
+    );
+
+    if (byHashIndex >= 0) {
+      const existing = currentEvidence[byHashIndex];
+      appliedEvidence = {
+        ...existing,
+        ...nextEvidence,
+        evidence_id:
+          typeof existing.evidence_id === "string" && existing.evidence_id.length > 0
+            ? existing.evidence_id
+            : evidenceId,
+      };
+      currentEvidence[byHashIndex] = appliedEvidence;
+      action = "updated";
+    } else {
+      currentEvidence.push(nextEvidence);
+      action = "added";
+    }
+  }
+
+  instance.evidence = currentEvidence;
+  instances[instanceIndex] = instance;
+  draft.license_instances = instances;
+
+  return {
+    manifest: draft,
+    action,
+    license_id: licenseId,
+    evidence: appliedEvidence,
   };
 }
 

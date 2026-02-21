@@ -15,7 +15,12 @@ Goal: developer workflow for lawful, auditable font usage in projects.
   - writes an event log entry
 - `setzkasten scan`
   - local repository scan
+  - optional discovery of font binaries and likely license files
+  - deterministic file fingerprint (`document_hash`) for discovered license files
   - domain scan only after domain verification (interface prepared)
+- `setzkasten evidence add`
+  - attach/update evidence for an existing `license_instance` from a local file
+  - store hash + metadata in manifest (not file contents)
 - `setzkasten policy`
   - policy evaluation: `allow` / `warn` / `escalate`
 - `setzkasten quote`
@@ -27,6 +32,7 @@ Goal: developer workflow for lawful, auditable font usage in projects.
 - Manifest (source of truth)
 - License schema v1.0.0 (offering + instance)
 - Event log (append-only)
+- Evidence workflow: discover -> hash -> link -> policy
 
 ### Telemetry
 - Optional, opt-in, anonymized (product improvement only)

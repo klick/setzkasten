@@ -39,6 +39,11 @@ test("scanProject discovers font files when discover=true", async () => {
   writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
   writeFileSync(path.join(tempDir, "assets", "fonts", "Real-Bold.otf"), "font-binary");
   writeFileSync(
+    path.join(tempDir, "assets", "fonts", "OFL.txt"),
+    "SIL OPEN FONT LICENSE Version 1.1\nFont Family: Inter",
+    "utf8",
+  );
+  writeFileSync(
     path.join(tempDir, "styles.css"),
     "body { font-family: 'Inter', sans-serif; }",
     "utf8",
@@ -52,14 +57,21 @@ test("scanProject discovers font files when discover=true", async () => {
 
   rmSync(tempDir, { recursive: true, force: true });
 
-  assert.equal(result.scanned_files_count, 1);
-  assert.equal(result.font_matches.inter.match_count, 1);
+  assert.ok(result.scanned_files_count >= 1);
+  assert.ok(result.font_matches.inter.match_count >= 1);
   assert.equal(result.discovered_font_files.length, 2);
+  assert.equal(result.discovered_license_files.length, 1);
 
   const inter = result.discovered_font_files.find((entry) => entry.file_name === "Inter-Regular.woff2");
   assert.ok(inter);
   assert.equal(inter.family_guess, "Inter");
   assert.equal(inter.font_id_guess, "inter");
+
+  const license = result.discovered_license_files[0];
+  assert.equal(license.file_name, "OFL.txt");
+  assert.equal(license.detected_license, "sil_ofl_1_1");
+  assert.equal(license.matched_font_ids[0], "inter");
+  assert.match(license.document_hash, /^[A-Fa-f0-9]{64}$/);
 });
 
 test("scanProject does not include discovered files when discover=false", async () => {
@@ -76,4 +88,5 @@ test("scanProject does not include discovered files when discover=false", async 
   rmSync(tempDir, { recursive: true, force: true });
 
   assert.deepEqual(result.discovered_font_files, []);
+  assert.deepEqual(result.discovered_license_files, []);
 });

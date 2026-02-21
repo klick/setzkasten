@@ -94,7 +94,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional: eingeschr\u00e4nkte Style-/Schnitt-Auswahl"
+          "description": "Optional: restricted style/weight selection"
         }
       }
     },
@@ -168,7 +168,7 @@
             "type": "string",
             "minLength": 2
           },
-          "description": "Optional: Regions/Geografie pro Recht"
+          "description": "Optional: regions/geography per right"
         },
         "modification_kinds": {
           "type": "array",
@@ -182,7 +182,7 @@
               "glyph_edits"
             ]
           },
-          "description": "Nur f\u00fcr right_type=modification"
+          "description": "Only for right_type=modification"
         },
         "allowed_formats": {
           "type": "array",
@@ -198,7 +198,7 @@
               "variable"
             ]
           },
-          "description": "Nur f\u00fcr right_type=formats"
+          "description": "Only for right_type=formats"
         },
         "notes": {
           "type": "string"
@@ -329,7 +329,7 @@
               }
             }
           },
-          "description": "Deterministische Preisregeln"
+          "description": "Deterministic pricing rules"
         }
       }
     },
@@ -391,7 +391,7 @@
         },
         "reference": {
           "type": "string",
-          "description": "Rechnungsnummer/Vertragsreferenz"
+          "description": "Invoice number/contract reference"
         },
         "purchased_at": {
           "$ref": "#/$defs/ISODateTime"
@@ -566,7 +566,7 @@
           "items": {
             "$ref": "#/$defs/Evidence"
           },
-          "minItems": 1
+          "minItems": 0
         },
         "acquisition_source": {
           "type": "string",

@@ -32,7 +32,7 @@ This document defines semantics and the model. The JSON Schema lives in `contrac
 - `metric_limits[]` (concrete selection for this instance)
 - `status` (`active` | `expired` | `superseded` | `revoked`)
 - `valid_from` / `valid_until` (term licenses supported)
-- `evidence[]` (at least 1, including document hash)
+- `evidence[]` (hash + metadata references; can start empty and be attached later)
 - `acquisition_source` (`direct_foundry` | `reseller` | `marketplace` | `legacy`)
 - `upgrades_from` (optional)
 

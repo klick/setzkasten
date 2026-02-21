@@ -20,6 +20,7 @@ npm install -g @setzkasten/cli
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
+setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
 ```
@@ -29,7 +30,8 @@ setzkasten quote
 npm run build
 node packages/cli/src/index.js init
 node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
-node packages/cli/src/index.js scan
+node packages/cli/src/index.js scan --discover
+node packages/cli/src/index.js evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 node packages/cli/src/index.js policy
 node packages/cli/src/index.js quote
 ```
@@ -39,15 +41,24 @@ node packages/cli/src/index.js quote
 - `add`
 - `remove`
 - `scan`
+- `evidence add`
 - `policy`
 - `quote`
 - `migrate` (stub)
 
+## License Workflow
+- `scan --discover` finds font files and likely license files in the repository.
+- Discovered license files include a deterministic `document_hash` (sha256) in CLI output.
+- `evidence add` links a local license document hash to a `license_instance`.
+- `policy` warns when BYO fonts have no linked license instance or no evidence.
+
 ## Documentation
-- Decisions: `docs/adr/000-project-foundations.md`
 - V1 feature cut: `docs/specs/v1-feature-set.md`
+- Policy rules: `docs/specs/policy-rules.md`
+- Event log: `docs/specs/event-log.md`
+- Manifest schema (concept): `docs/specs/manifest-schema.md`
 - License schema (concept): `docs/specs/license-schema.md`
-- JSON Schemas: `contracts/`
+- JSON schemas: `contracts/`
 
 ## License
 See `LICENSE`.

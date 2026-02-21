@@ -97,7 +97,7 @@
           "usage": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Freies Feld f\u00fcr Scan-Ergebnisse (Paths, Domains, Contexts)."
+            "description": "Flexible field for scan results (paths, domains, contexts)."
           },
           "active_license_instance_id": {
             "$ref": "../license-spec/schema.json#/$defs/ID"

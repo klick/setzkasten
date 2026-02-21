@@ -7,6 +7,7 @@ Policy engine outputs:
 
 ## Example Rules
 - `warn`: BYO font without evidence
+- `warn`: BYO font without linked license instance
 - `warn`: activated rights include self-hosting, but offering allows CDN only
 - `escalate`: license instance `status != active`
 - `escalate`: modification required (`subset`/`convert`) but not allowed

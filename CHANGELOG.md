@@ -1,7 +1,11 @@
 # Changelog
 
 ## Unreleased
-- No changes yet.
+- Added license-file discovery in `scan --discover` with deterministic `document_hash` output.
+- Added `discovered_license_files` scan output (`path`, `document_hash`, `detected_license`, `matched_font_ids`).
+- Added new workflow command: `setzkasten evidence add --license-id <id> --file <path>`.
+- Added manifest evidence upsert helper and relaxed license-instance evidence minimum to allow `evidence: []` until linked.
+- Updated docs and README to describe discover -> hash -> link -> policy workflow.
 
 ## 0.1.0-rc.3 - 2026-02-19
 - Added `scan --discover` to find existing local font files (`.woff2`, `.woff`, `.ttf`, `.otf`, `.otc`).

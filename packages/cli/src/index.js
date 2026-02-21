@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { MANIFEST_FILENAME, parseListFlag, slugifyId } from "./lib/core.js";
+import { MANIFEST_FILENAME, parseListFlag, sha256Hex, slugifyId } from "./lib/core.js";
 import { appendProjectEvent } from "./lib/events.js";
 import {
   addFontToManifest,
@@ -13,6 +13,7 @@ import {
   loadManifest,
   removeFontFromManifest,
   saveManifest,
+  upsertLicenseEvidence,
 } from "./lib/manifest-lib.js";
 import { evaluatePolicy } from "./lib/policy.js";
 import { generateQuote } from "./lib/quote.js";
@@ -28,7 +29,8 @@ Commands:
   init      Create ${MANIFEST_FILENAME} and .setzkasten/events.log
   add       Add font entry to manifest
   remove    Remove font entry from manifest
-  scan      Scan local repository usage and optionally discover font files
+  scan      Scan local repository usage and optionally discover font/license files
+  evidence  Attach/update license evidence from local files
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
   migrate   Generate migration stub plan
@@ -37,13 +39,20 @@ Common options:
   --manifest <path>   Explicit path to ${MANIFEST_FILENAME}
 Scan options:
   --path <dir>                 Directory to scan (default: project root)
-  --discover                   Discover existing font files (woff2/woff/ttf/otf/otc)
-  --max-discovered-files <n>   Max discovered files in output (default: 200)
+  --discover                        Discover existing font and license files
+  --max-discovered-files <n>        Max discovered font files in output (default: 200)
+  --max-discovered-license-files <n> Max discovered license files in output (default: 200)
+Evidence options:
+  setzkasten evidence add --license-id <id> --file <path>
+    [--type <type>] [--evidence-id <id>] [--document-name <name>]
+    [--document-url <uri>] [--reference <id>] [--issuer <name>]
+    [--purchased-at <iso-date-time>] [--notes <text>]
 
 Examples:
   setzkasten init --name "Acme Project"
   setzkasten add --font-id inter --family "Inter" --source oss
   setzkasten scan --path . --discover
+  setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
   setzkasten policy --fail-on escalate
 `;
 
@@ -339,6 +348,7 @@ async function handleScan(cwd, flags) {
   const scanRoot = path.resolve(cwd, getStringFlag(flags, "path") ?? projectRoot);
   const maxMatchedPaths = Number(getStringFlag(flags, "max-matched-paths") ?? "30");
   const maxDiscoveredFiles = Number(getStringFlag(flags, "max-discovered-files") ?? "200");
+  const maxDiscoveredLicenseFiles = Number(getStringFlag(flags, "max-discovered-license-files") ?? "200");
   const discover = getBooleanFlag(flags, "discover");
 
   const scanResult = await scanProject({
@@ -346,6 +356,7 @@ async function handleScan(cwd, flags) {
     manifest,
     maxMatchedPathsPerFont: Number.isFinite(maxMatchedPaths) ? maxMatchedPaths : 30,
     maxDiscoveredFiles: Number.isFinite(maxDiscoveredFiles) ? maxDiscoveredFiles : 200,
+    maxDiscoveredLicenseFiles: Number.isFinite(maxDiscoveredLicenseFiles) ? maxDiscoveredLicenseFiles : 200,
     discover,
   });
 
@@ -362,6 +373,9 @@ async function handleScan(cwd, flags) {
       discovered_font_files_count: Array.isArray(scanResult.discovered_font_files)
         ? scanResult.discovered_font_files.length
         : 0,
+      discovered_license_files_count: Array.isArray(scanResult.discovered_license_files)
+        ? scanResult.discovered_license_files.length
+        : 0,
       discover_enabled: discover,
       root_path: scanResult.root_path,
     },
@@ -374,6 +388,75 @@ async function handleScan(cwd, flags) {
   });
 
   return 0;
+}
+
+async function handleEvidenceAdd(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const licenseId = requireStringFlag(flags, "license-id");
+  const documentPath = path.resolve(cwd, requireStringFlag(flags, "file"));
+
+  let documentBuffer;
+  try {
+    documentBuffer = await readFile(documentPath);
+  } catch {
+    throw new Error(`Could not read evidence file at ${documentPath}.`);
+  }
+
+  const upsertResult = upsertLicenseEvidence(manifest, {
+    licenseId,
+    evidenceId: getStringFlag(flags, "evidence-id"),
+    type: getStringFlag(flags, "type") ?? "other",
+    documentHash: sha256Hex(documentBuffer),
+    documentName: getStringFlag(flags, "document-name") ?? path.basename(documentPath),
+    documentPath: path.relative(projectRoot, documentPath),
+    documentUrl: getStringFlag(flags, "document-url"),
+    reference: getStringFlag(flags, "reference"),
+    issuer: getStringFlag(flags, "issuer"),
+    purchasedAt: getStringFlag(flags, "purchased-at"),
+    notes: getStringFlag(flags, "notes"),
+  });
+
+  await saveManifest(resolvedManifestPath, upsertResult.manifest);
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(upsertResult.manifest),
+    eventType: "manifest.license_ref_added",
+    payload: {
+      action: upsertResult.action,
+      license_id: upsertResult.license_id,
+      evidence_id: upsertResult.evidence.evidence_id,
+      evidence_type: upsertResult.evidence.type,
+      document_hash: upsertResult.evidence.document_hash,
+      document_name: upsertResult.evidence.document_name ?? path.basename(documentPath),
+      file_path: path.relative(projectRoot, documentPath),
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "evidence",
+    action: "add",
+    manifest_path: resolvedManifestPath,
+    result: upsertResult,
+  });
+
+  return 0;
+}
+
+async function handleEvidence(cwd, flags, positionals) {
+  const action = positionals[0] ?? "add";
+
+  if (action !== "add") {
+    throw new Error(`Unknown evidence action '${action}'. Supported: add`);
+  }
+
+  return handleEvidenceAdd(cwd, flags);
 }
 
 async function handlePolicy(cwd, flags) {
@@ -490,6 +573,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleRemove(cwd, parsed.flags);
     case "scan":
       return handleScan(cwd, parsed.flags);
+    case "evidence":
+      return handleEvidence(cwd, parsed.flags, parsed.positionals);
     case "policy":
       return handlePolicy(cwd, parsed.flags);
     case "quote":
