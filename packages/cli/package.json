@@ -1,6 +1,6 @@
 {
   "name": "@setzkasten/cli",
-  "version": "0.1.0-rc.4",
+  "version": "0.1.0-rc.5",
   "description": "Setzkasten CLI for font license governance and audit trails.",
   "private": false,
   "type": "module",
