@@ -30,13 +30,15 @@ setzkasten migrate
 ```
 
 ## License Evidence Workflow
-1. Run `setzkasten scan --path . --discover` to list discovered fonts and likely license files.
+1. Run `setzkasten scan --path . --discover` to list discovered fonts and font-adjacent license files.
 2. Review `result.discovered_license_files` in JSON output (`path`, `document_hash`, `detected_license`, `matched_font_ids`).
 3. Link the local license file to a license instance:
 ```bash
 setzkasten evidence add --license-id <license_id> --file <path-to-license-file>
 ```
 4. Run `setzkasten policy` to verify BYO evidence state.
+
+Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.
 
 ## Data written locally
 - `LICENSE_MANIFEST.json`

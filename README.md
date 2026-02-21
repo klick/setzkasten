@@ -47,7 +47,8 @@ node packages/cli/src/index.js quote
 - `migrate` (stub)
 
 ## License Workflow
-- `scan --discover` finds font files and likely license files in the repository.
+- `scan --discover` finds font files and font-adjacent license files in the repository.
+- Root scans ignore dependency directories like `node_modules` and `vendor` by default.
 - Discovered license files include a deterministic `document_hash` (sha256) in CLI output.
 - `evidence add` links a local license document hash to a `license_instance`.
 - `policy` warns when BYO fonts have no linked license instance or no evidence.

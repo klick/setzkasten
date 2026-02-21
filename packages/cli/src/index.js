@@ -39,7 +39,7 @@ Common options:
   --manifest <path>   Explicit path to ${MANIFEST_FILENAME}
 Scan options:
   --path <dir>                 Directory to scan (default: project root)
-  --discover                        Discover existing font and license files
+  --discover                        Discover existing font files and font-adjacent license files
   --max-discovered-files <n>        Max discovered font files in output (default: 200)
   --max-discovered-license-files <n> Max discovered license files in output (default: 200)
 Evidence options:

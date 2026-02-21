@@ -5,6 +5,8 @@ import { nowIso, sha256Hex, slugifyId } from "./core.js";
 const DEFAULT_IGNORED_DIRS = new Set([
   ".git",
   "node_modules",
+  "vendor",
+  "bower_components",
   ".setzkasten",
   "dist",
   "coverage",
@@ -33,6 +35,8 @@ const TEXT_FILE_EXTENSIONS = new Set([
 const FONT_FILE_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf", ".otc"]);
 const LICENSE_FILE_EXTENSIONS = new Set(["", ".txt", ".md", ".pdf", ".rtf", ".html", ".htm"]);
 const LICENSE_FILE_NAME_PATTERN = /(license|licence|eula|ofl|fontlog|copying|copyright)/i;
+const FONT_PATH_SEGMENT_PATTERN = /(^|[\\/])(fonts?|typefaces?)([\\/]|$)/i;
+const FONT_LICENSE_ANCESTOR_DEPTH = 4;
 
 const STYLE_TOKENS = new Set([
   "regular",
@@ -57,6 +61,10 @@ const STYLE_TOKENS = new Set([
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function escapeRegex(input) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeFonts(manifest) {
@@ -179,6 +187,33 @@ function guessFamilyNameFromFile(filePath) {
   return tokens.map((token) => toTitleCaseToken(token)).join(" ");
 }
 
+function createFamilyNamePattern(familyName) {
+  const normalized = familyName.trim().toLowerCase().replace(/\s+/g, " ");
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const tokens = normalized.split(" ").map((token) => token.trim()).filter(Boolean);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const tokenPattern = tokens.map((token) => escapeRegex(token)).join("[\\s_-]+");
+  return new RegExp(`(^|[^a-z0-9])${tokenPattern}([^a-z0-9]|$)`, "i");
+}
+
+function containsFamilyName(contentLower, font) {
+  if (!contentLower.includes(font.family_name_lower)) {
+    return false;
+  }
+
+  if (!font.family_name_pattern) {
+    return true;
+  }
+
+  return font.family_name_pattern.test(contentLower);
+}
+
 function discoverFontFiles(rootPath, fontFiles, maxDiscoveredFiles) {
   return fontFiles
     .map((filePath) => {
@@ -246,9 +281,51 @@ function matchFontIdsFromLicenseContent(fonts, contentLower) {
   }
 
   return fonts
-    .filter((font) => contentLower.includes(font.family_name.toLowerCase()))
+    .filter((font) => containsFamilyName(contentLower, font))
     .map((font) => font.font_id)
     .sort((a, b) => a.localeCompare(b));
+}
+
+function collectFontAdjacentDirs(rootPath, fontFiles) {
+  const root = path.resolve(rootPath);
+  const dirs = new Set();
+
+  for (const filePath of fontFiles) {
+    let currentDir = path.resolve(path.dirname(filePath));
+
+    for (let depth = 0; depth <= FONT_LICENSE_ANCESTOR_DEPTH; depth += 1) {
+      dirs.add(currentDir);
+
+      if (currentDir === root) {
+        break;
+      }
+
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir || parentDir === root) {
+        break;
+      }
+
+      currentDir = parentDir;
+    }
+  }
+
+  return dirs;
+}
+
+function filterLicenseFilesForFontContext(rootPath, licenseFiles, fontFiles) {
+  if (licenseFiles.length === 0 || fontFiles.length === 0) {
+    return [];
+  }
+
+  const adjacentDirs = collectFontAdjacentDirs(rootPath, fontFiles);
+  return licenseFiles.filter((filePath) => {
+    const fileDir = path.resolve(path.dirname(filePath));
+    if (adjacentDirs.has(fileDir)) {
+      return true;
+    }
+
+    return FONT_PATH_SEGMENT_PATTERN.test(relativeTo(rootPath, filePath));
+  });
 }
 
 async function discoverLicenseFiles(rootPath, licenseFiles, fonts, maxDiscoveredLicenseFiles) {
@@ -300,10 +377,16 @@ export async function scanProject(input) {
     .map((font) => ({
       font_id: typeof font.font_id === "string" ? font.font_id : "",
       family_name: typeof font.family_name === "string" ? font.family_name : "",
+      family_name_lower: typeof font.family_name === "string" ? font.family_name.toLowerCase() : "",
+      family_name_pattern:
+        typeof font.family_name === "string" ? createFamilyNamePattern(font.family_name) : null,
     }))
     .filter((font) => font.font_id.length > 0 && font.family_name.length > 0);
 
   const { textFiles, fontFiles, licenseFiles } = await collectProjectFiles(rootPath);
+  const candidateLicenseFiles = discover
+    ? filterLicenseFilesForFontContext(rootPath, licenseFiles, fontFiles)
+    : [];
   const matches = new Map();
 
   for (const font of fonts) {
@@ -327,7 +410,7 @@ export async function scanProject(input) {
     const lowerContent = content.toLowerCase();
 
     for (const font of fonts) {
-      if (!lowerContent.includes(font.family_name.toLowerCase())) {
+      if (!containsFamilyName(lowerContent, font)) {
         continue;
       }
 
@@ -344,7 +427,7 @@ export async function scanProject(input) {
   }
 
   const discoveredLicenseFiles = discover
-    ? await discoverLicenseFiles(rootPath, licenseFiles, fonts, maxDiscoveredLicenseFiles)
+    ? await discoverLicenseFiles(rootPath, candidateLicenseFiles, fonts, maxDiscoveredLicenseFiles)
     : [];
 
   return {

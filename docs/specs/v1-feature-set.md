@@ -15,7 +15,8 @@ Goal: developer workflow for lawful, auditable font usage in projects.
   - writes an event log entry
 - `setzkasten scan`
   - local repository scan
-  - optional discovery of font binaries and likely license files
+  - optional discovery of font binaries and font-adjacent license files
+  - dependency directories (`node_modules`, `vendor`) ignored by default
   - deterministic file fingerprint (`document_hash`) for discovered license files
   - domain scan only after domain verification (interface prepared)
 - `setzkasten evidence add`

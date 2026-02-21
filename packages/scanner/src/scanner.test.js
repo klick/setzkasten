@@ -36,6 +36,7 @@ test("scanProject discovers font files when discover=true", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-scanner-"));
 
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  mkdirSync(path.join(tempDir, "vendor", "example"), { recursive: true });
   writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
   writeFileSync(path.join(tempDir, "assets", "fonts", "Real-Bold.otf"), "font-binary");
   writeFileSync(
@@ -43,6 +44,8 @@ test("scanProject discovers font files when discover=true", async () => {
     "SIL OPEN FONT LICENSE Version 1.1\nFont Family: Inter",
     "utf8",
   );
+  writeFileSync(path.join(tempDir, "LICENSE.txt"), "MIT License", "utf8");
+  writeFileSync(path.join(tempDir, "vendor", "example", "LICENSE"), "MIT License", "utf8");
   writeFileSync(
     path.join(tempDir, "styles.css"),
     "body { font-family: 'Inter', sans-serif; }",
@@ -89,4 +92,22 @@ test("scanProject does not include discovered files when discover=false", async 
 
   assert.deepEqual(result.discovered_font_files, []);
   assert.deepEqual(result.discovered_license_files, []);
+});
+
+test("scanProject matches family names as tokens and ignores substring noise", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-scanner-"));
+
+  writeFileSync(path.join(tempDir, "styles.css"), "body { font-family: 'Inter', sans-serif; }", "utf8");
+  writeFileSync(path.join(tempDir, "notes.md"), "Interface interactions and printer setup", "utf8");
+
+  const result = await scanProject({
+    rootPath: tempDir,
+    manifest: baseManifest(),
+    discover: false,
+  });
+
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(result.font_matches.inter.match_count, 1);
+  assert.deepEqual(result.font_matches.inter.matched_paths, ["styles.css"]);
 });

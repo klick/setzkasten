@@ -26,6 +26,7 @@ test("scan --discover prints discovered font files", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-discover-"));
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
   writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
+  writeFileSync(path.join(tempDir, "LICENSE.txt"), "MIT License", "utf8");
   writeFileSync(
     path.join(tempDir, "assets", "fonts", "LICENSE.txt"),
     "SIL OPEN FONT LICENSE Version 1.1\nFont Family: Inter",
@@ -53,6 +54,10 @@ test("scan --discover prints discovered font files", () => {
   assert.ok(parsed.result.discovered_font_files.length >= 1);
   assert.ok(Array.isArray(parsed.result.discovered_license_files));
   assert.ok(parsed.result.discovered_license_files.length >= 1);
+  assert.equal(
+    parsed.result.discovered_license_files.some((entry) => entry.path === "LICENSE.txt"),
+    false,
+  );
 });
 
 test("evidence add hashes local license file and attaches it to a license instance", () => {

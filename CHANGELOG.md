@@ -1,11 +1,13 @@
 # Changelog
 
 ## Unreleased
-- Added license-file discovery in `scan --discover` with deterministic `document_hash` output.
-- Added `discovered_license_files` scan output (`path`, `document_hash`, `detected_license`, `matched_font_ids`).
-- Added new workflow command: `setzkasten evidence add --license-id <id> --file <path>`.
-- Added manifest evidence upsert helper and relaxed license-instance evidence minimum to allow `evidence: []` until linked.
-- Updated docs and README to describe discover -> hash -> link -> policy workflow.
+
+## 0.1.0-rc.6 - 2026-02-21
+- Focused `scan --discover` on font-relevant results by restricting discovered license files to font-adjacent paths.
+- Added default ignore rules for dependency directories (`vendor`, `bower_components`) in scanner traversal.
+- Reduced false positives for font matching via token-based family-name matching (e.g. avoids matching `Inter` inside `interface`).
+- Added regression tests for root-level license noise filtering and substring-match prevention.
+- Updated CLI help and docs to explain font-adjacent discovery behavior.
 
 ## 0.1.0-rc.3 - 2026-02-19
 - Added `scan --discover` to find existing local font files (`.woff2`, `.woff`, `.ttf`, `.otf`, `.otc`).
