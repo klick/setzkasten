@@ -23,8 +23,11 @@ Required fields:
 - `manifest.created`
 - `manifest.font_added`
 - `manifest.font_removed`
+- `manifest.font_pruned`
+- `manifest.license_instance_pruned`
 - `manifest.license_ref_added` (evidence hash linked or updated for a license instance)
 - `scan.completed`
+- `prune.completed`
 - `policy.ok`
 - `policy.warning_raised`
 - `quote.generated`

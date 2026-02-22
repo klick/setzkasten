@@ -19,6 +19,8 @@ import { evaluatePolicy } from "./lib/policy.js";
 import { generateQuote } from "./lib/quote.js";
 import { applyScanResultToManifest, scanProject } from "./lib/scanner.js";
 
+const PRUNE_RULES = new Set(["no-file-and-no-usage", "no-file"]);
+
 function printHelp() {
   const helpText = `Setzkasten CLI (V1)
 
@@ -30,6 +32,7 @@ Commands:
   add       Add font entry to manifest
   remove    Remove font entry from manifest
   scan      Scan local repository usage and optionally discover font/license files
+  prune     Remove manifest noise based on discovered font files and usage signals
   evidence  Attach/update license evidence from local files
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
@@ -42,6 +45,11 @@ Scan options:
   --discover                        Discover existing font files and font-adjacent license files
   --max-discovered-files <n>        Max discovered font files in output (default: 200)
   --max-discovered-license-files <n> Max discovered license files in output (default: 200)
+Prune options:
+  --path <dir>                 Directory to scan for prune evaluation (default: project root)
+  --rule <name>                no-file-and-no-usage (default) | no-file
+  --apply                      Apply removals (default is dry-run)
+  --max-removals <n>           Safety limit for removals when --apply is used (default: 50)
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -52,6 +60,8 @@ Examples:
   setzkasten init --name "Acme Project"
   setzkasten add --font-id inter --family "Inter" --source oss
   setzkasten scan --path . --discover
+  setzkasten prune --path . --rule no-file-and-no-usage
+  setzkasten prune --path . --apply
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
   setzkasten policy --fail-on escalate
 `;
@@ -166,6 +176,295 @@ function getListFlag(flags, key) {
   }
 
   return parseListFlag(value);
+}
+
+function isObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function asString(value) {
+  return typeof value === "string" ? value : null;
+}
+
+function asStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry) => typeof entry === "string");
+}
+
+function normalizeComparable(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function buildDiscoveredFontIndex(scanResult) {
+  const discoveredFonts = Array.isArray(scanResult.discovered_font_files)
+    ? scanResult.discovered_font_files
+    : [];
+  const byFontIdGuess = new Set();
+  const byFamilyGuess = new Set();
+
+  for (const entry of discoveredFonts) {
+    if (!isObject(entry)) {
+      continue;
+    }
+
+    const fontIdGuess = asString(entry.font_id_guess);
+    if (fontIdGuess) {
+      byFontIdGuess.add(fontIdGuess.toLowerCase());
+    }
+
+    const familyGuess = normalizeComparable(asString(entry.family_guess));
+    if (familyGuess) {
+      byFamilyGuess.add(familyGuess);
+    }
+  }
+
+  return { byFontIdGuess, byFamilyGuess };
+}
+
+function hasDiscoveredFontFile(font, discoveredIndex) {
+  if (!isObject(font)) {
+    return false;
+  }
+
+  const fontId = asString(font.font_id);
+  if (fontId && discoveredIndex.byFontIdGuess.has(fontId.toLowerCase())) {
+    return true;
+  }
+
+  const familyName = normalizeComparable(asString(font.family_name));
+  if (familyName && discoveredIndex.byFamilyGuess.has(familyName)) {
+    return true;
+  }
+
+  return false;
+}
+
+function getUsageMatchCount(font, scanResult) {
+  const fontId = isObject(font) ? asString(font.font_id) : null;
+  if (fontId && isObject(scanResult.font_matches) && isObject(scanResult.font_matches[fontId])) {
+    const matchedPaths = Array.isArray(scanResult.font_matches[fontId].matched_paths)
+      ? scanResult.font_matches[fontId].matched_paths
+      : [];
+    const relevantMatchedPaths = matchedPaths.filter(
+      (entry) =>
+        typeof entry === "string" &&
+        entry !== MANIFEST_FILENAME &&
+        !entry.startsWith(".setzkasten/"),
+    );
+
+    if (relevantMatchedPaths.length > 0) {
+      return relevantMatchedPaths.length;
+    }
+
+    const count = scanResult.font_matches[fontId].match_count;
+    if (
+      typeof count === "number" &&
+      Number.isFinite(count) &&
+      count >= 0 &&
+      matchedPaths.length === 0
+    ) {
+      return count;
+    }
+
+    return 0;
+  }
+
+  if (isObject(font) && isObject(font.usage) && isObject(font.usage.scan)) {
+    const count = font.usage.scan.match_count;
+    if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+      return count;
+    }
+  }
+
+  return 0;
+}
+
+function buildPruneCandidates(manifest, scanResult, rule) {
+  const fonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+  const discoveredIndex = buildDiscoveredFontIndex(scanResult);
+  const candidates = [];
+
+  for (const font of fonts) {
+    if (!isObject(font)) {
+      continue;
+    }
+
+    const fontId = asString(font.font_id);
+    const familyName = asString(font.family_name);
+    if (!fontId || !familyName) {
+      continue;
+    }
+
+    const hasFile = hasDiscoveredFontFile(font, discoveredIndex);
+    const usageMatchCount = getUsageMatchCount(font, scanResult);
+    const noUsage = usageMatchCount === 0;
+
+    const reasons = [];
+    if (!hasFile) {
+      reasons.push("missing_font_file");
+    }
+    if (noUsage) {
+      reasons.push("no_usage_refs");
+    }
+
+    let selected = false;
+    if (rule === "no-file-and-no-usage") {
+      selected = !hasFile && noUsage;
+    } else if (rule === "no-file") {
+      selected = !hasFile;
+    }
+
+    if (!selected) {
+      continue;
+    }
+
+    const linkedLicenseIds = new Set([
+      ...asStringArray(font.license_instance_ids),
+      asString(font.active_license_instance_id),
+    ]);
+
+    candidates.push({
+      font_id: fontId,
+      family_name: familyName,
+      reasons,
+      has_discovered_file: hasFile,
+      usage_match_count: usageMatchCount,
+      linked_license_ids: Array.from(linkedLicenseIds).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+    });
+  }
+
+  return candidates.sort((a, b) => a.font_id.localeCompare(b.font_id));
+}
+
+function removeLinkedLicenseInstances(manifest, removedFonts) {
+  const licenseInstances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+  if (licenseInstances.length === 0 || removedFonts.length === 0) {
+    return { manifest, removedLicenseInstances: [] };
+  }
+
+  const removedLinkedLicenseIds = new Set();
+  for (const font of removedFonts) {
+    for (const licenseId of asStringArray(font.license_instance_ids)) {
+      removedLinkedLicenseIds.add(licenseId);
+    }
+    const activeId = asString(font.active_license_instance_id);
+    if (activeId) {
+      removedLinkedLicenseIds.add(activeId);
+    }
+  }
+
+  if (removedLinkedLicenseIds.size === 0) {
+    return { manifest, removedLicenseInstances: [] };
+  }
+
+  const remainingFonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+  const stillReferencedLicenseIds = new Set();
+  for (const font of remainingFonts) {
+    if (!isObject(font)) {
+      continue;
+    }
+    for (const licenseId of asStringArray(font.license_instance_ids)) {
+      stillReferencedLicenseIds.add(licenseId);
+    }
+    const activeId = asString(font.active_license_instance_id);
+    if (activeId) {
+      stillReferencedLicenseIds.add(activeId);
+    }
+  }
+
+  const removedLicenseInstances = [];
+  manifest.license_instances = licenseInstances.filter((instance) => {
+    if (!isObject(instance)) {
+      return true;
+    }
+
+    const licenseId = asString(instance.license_id);
+    if (!licenseId) {
+      return true;
+    }
+
+    if (!removedLinkedLicenseIds.has(licenseId) || stillReferencedLicenseIds.has(licenseId)) {
+      return true;
+    }
+
+    removedLicenseInstances.push({
+      license_id: licenseId,
+      status: asString(instance.status) ?? null,
+    });
+    return false;
+  });
+
+  const remainingLicenseIds = new Set(
+    manifest.license_instances
+      .filter((entry) => isObject(entry))
+      .map((entry) => asString(entry.license_id))
+      .filter(Boolean),
+  );
+
+  for (const font of remainingFonts) {
+    if (!isObject(font)) {
+      continue;
+    }
+
+    font.license_instance_ids = asStringArray(font.license_instance_ids).filter((licenseId) =>
+      remainingLicenseIds.has(licenseId),
+    );
+
+    const activeId = asString(font.active_license_instance_id);
+    if (activeId && !remainingLicenseIds.has(activeId)) {
+      delete font.active_license_instance_id;
+    }
+  }
+
+  return { manifest, removedLicenseInstances };
+}
+
+function applyPruneCandidates(manifest, candidates, maxRemovals) {
+  const limitedCandidates = candidates.slice(0, maxRemovals);
+  const candidateByFontId = new Map(limitedCandidates.map((candidate) => [candidate.font_id, candidate]));
+  const draft = JSON.parse(JSON.stringify(manifest));
+  const fonts = Array.isArray(draft.fonts) ? draft.fonts : [];
+  const removedFonts = [];
+  const keptFonts = [];
+
+  for (const font of fonts) {
+    if (!isObject(font)) {
+      keptFonts.push(font);
+      continue;
+    }
+
+    const fontId = asString(font.font_id);
+    if (!fontId || !candidateByFontId.has(fontId)) {
+      keptFonts.push(font);
+      continue;
+    }
+
+    removedFonts.push({
+      font_id: fontId,
+      family_name: asString(font.family_name) ?? fontId,
+      reasons: candidateByFontId.get(fontId).reasons,
+      linked_license_ids: candidateByFontId.get(fontId).linked_license_ids,
+      license_instance_ids: asStringArray(font.license_instance_ids),
+      active_license_instance_id: asString(font.active_license_instance_id),
+    });
+  }
+
+  draft.fonts = keptFonts;
+  const withLicenseCleanup = removeLinkedLicenseInstances(draft, removedFonts);
+
+  return {
+    manifest: withLicenseCleanup.manifest,
+    removedFonts,
+    removedLicenseInstances: withLicenseCleanup.removedLicenseInstances,
+    skippedCandidates: candidates.length - limitedCandidates.length,
+  };
 }
 
 function requireStringFlag(flags, key) {
@@ -390,6 +689,110 @@ async function handleScan(cwd, flags) {
   return 0;
 }
 
+async function handlePrune(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const scanRoot = path.resolve(cwd, getStringFlag(flags, "path") ?? projectRoot);
+  const apply = getBooleanFlag(flags, "apply");
+  const rule = getStringFlag(flags, "rule") ?? "no-file-and-no-usage";
+  const maxRemovalsInput = Number(getStringFlag(flags, "max-removals") ?? "50");
+  const maxRemovals = Number.isFinite(maxRemovalsInput) && maxRemovalsInput > 0 ? maxRemovalsInput : 50;
+
+  if (!PRUNE_RULES.has(rule)) {
+    throw new Error(`--rule must be one of: ${Array.from(PRUNE_RULES).join(", ")}`);
+  }
+
+  const scanResult = await scanProject({
+    rootPath: scanRoot,
+    manifest,
+    maxMatchedPathsPerFont: 30,
+    maxDiscoveredFiles: 500,
+    maxDiscoveredLicenseFiles: 0,
+    discover: true,
+  });
+
+  const manifestWithScan = applyScanResultToManifest(manifest, scanResult);
+  const candidates = buildPruneCandidates(manifestWithScan, scanResult, rule);
+
+  if (!apply) {
+    printJson({
+      ok: true,
+      command: "prune",
+      dry_run: true,
+      rule,
+      root_path: scanResult.root_path,
+      candidates_count: candidates.length,
+      max_removals: maxRemovals,
+      candidates,
+    });
+    return 0;
+  }
+
+  const pruneResult = applyPruneCandidates(manifestWithScan, candidates, maxRemovals);
+  await saveManifest(resolvedManifestPath, pruneResult.manifest);
+
+  for (const removedFont of pruneResult.removedFonts) {
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(pruneResult.manifest),
+      eventType: "manifest.font_pruned",
+      payload: {
+        font_id: removedFont.font_id,
+        family_name: removedFont.family_name,
+        reasons: removedFont.reasons,
+        rule,
+      },
+    });
+  }
+
+  for (const removedInstance of pruneResult.removedLicenseInstances) {
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(pruneResult.manifest),
+      eventType: "manifest.license_instance_pruned",
+      payload: {
+        license_id: removedInstance.license_id,
+        status: removedInstance.status,
+        rule,
+      },
+    });
+  }
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(pruneResult.manifest),
+    eventType: "prune.completed",
+    payload: {
+      rule,
+      root_path: scanResult.root_path,
+      candidates_count: candidates.length,
+      removed_count: pruneResult.removedFonts.length,
+      removed_license_instances_count: pruneResult.removedLicenseInstances.length,
+      skipped_candidates: pruneResult.skippedCandidates,
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "prune",
+    dry_run: false,
+    rule,
+    root_path: scanResult.root_path,
+    candidates_count: candidates.length,
+    removed_count: pruneResult.removedFonts.length,
+    removed_license_instances_count: pruneResult.removedLicenseInstances.length,
+    skipped_candidates: pruneResult.skippedCandidates,
+    removed_fonts: pruneResult.removedFonts,
+    removed_license_instances: pruneResult.removedLicenseInstances,
+  });
+
+  return 0;
+}
+
 async function handleEvidenceAdd(cwd, flags) {
   const manifestPath = resolveManifestPathFromFlag(cwd, flags);
   const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
@@ -573,6 +976,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleRemove(cwd, parsed.flags);
     case "scan":
       return handleScan(cwd, parsed.flags);
+    case "prune":
+      return handlePrune(cwd, parsed.flags);
     case "evidence":
       return handleEvidence(cwd, parsed.flags, parsed.positionals);
     case "policy":

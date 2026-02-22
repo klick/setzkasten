@@ -20,6 +20,7 @@ npm install -g @setzkasten/cli
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
+setzkasten prune --path . --apply
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -31,6 +32,7 @@ npm run build
 node packages/cli/src/index.js init
 node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
 node packages/cli/src/index.js scan --discover
+node packages/cli/src/index.js prune --apply
 node packages/cli/src/index.js evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 node packages/cli/src/index.js policy
 node packages/cli/src/index.js quote
@@ -41,6 +43,7 @@ node packages/cli/src/index.js quote
 - `add`
 - `remove`
 - `scan`
+- `prune`
 - `evidence add`
 - `policy`
 - `quote`
@@ -49,6 +52,7 @@ node packages/cli/src/index.js quote
 ## License Workflow
 - `scan --discover` finds font files and font-adjacent license files in the repository.
 - Root scans ignore dependency directories like `node_modules` and `vendor` by default.
+- `prune` removes manifest-only noise (dry-run by default) and can remove orphaned linked license instances when applying.
 - Discovered license files include a deterministic `document_hash` (sha256) in CLI output.
 - `evidence add` links a local license document hash to a `license_instance`.
 - `policy` warns when BYO fonts have no linked license instance or no evidence.

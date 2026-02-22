@@ -134,6 +134,140 @@ test("evidence add hashes local license file and attaches it to a license instan
   rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("prune dry-run reports candidates without mutating manifest", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-prune-dry-run-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
+  writeFileSync(path.join(tempDir, "styles.css"), "body{font-family:'Inter',sans-serif;}", "utf8");
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Prune Dry Run Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addInter = runCli(
+    scriptPath,
+    ["add", "--font-id", "inter", "--family", "Inter", "--source", "oss"],
+    { cwd: tempDir },
+  );
+  assert.equal(addInter.status, 0);
+
+  const addGhost = runCli(
+    scriptPath,
+    ["add", "--font-id", "ghost", "--family", "Ghost", "--source", "byo"],
+    { cwd: tempDir },
+  );
+  assert.equal(addGhost.status, 0);
+
+  const pruneResult = runCli(scriptPath, ["prune", "--path", "."], { cwd: tempDir });
+  assert.equal(pruneResult.status, 0);
+
+  const parsed = JSON.parse(pruneResult.stdout);
+  assert.equal(parsed.command, "prune");
+  assert.equal(parsed.dry_run, true);
+  assert.equal(parsed.rule, "no-file-and-no-usage");
+  assert.equal(parsed.candidates_count, 1);
+  assert.equal(parsed.candidates[0].font_id, "ghost");
+  assert.deepEqual(parsed.candidates[0].reasons, ["missing_font_file", "no_usage_refs"]);
+
+  const manifest = JSON.parse(readFileSync(path.join(tempDir, "LICENSE_MANIFEST.json"), "utf8"));
+  assert.equal(manifest.fonts.some((entry) => entry.font_id === "ghost"), true);
+
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("prune --apply removes manifest noise and orphaned linked license instances", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-prune-apply-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
+  writeFileSync(path.join(tempDir, "styles.css"), "body{font-family:'Inter',sans-serif;}", "utf8");
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Prune Apply Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addInter = runCli(
+    scriptPath,
+    ["add", "--font-id", "inter", "--family", "Inter", "--source", "oss"],
+    { cwd: tempDir },
+  );
+  assert.equal(addInter.status, 0);
+
+  const addGhost = runCli(
+    scriptPath,
+    [
+      "add",
+      "--font-id",
+      "ghost",
+      "--family",
+      "Ghost",
+      "--source",
+      "byo",
+      "--license-instance-id",
+      "lic_ghost_001",
+      "--active-license-instance-id",
+      "lic_ghost_001",
+    ],
+    { cwd: tempDir },
+  );
+  assert.equal(addGhost.status, 0);
+
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.license_instances.push({
+    kind: "instance",
+    license_id: "lic_ghost_001",
+    licensee_id: manifest.licensees[0].licensee_id,
+    offering_ref: {
+      offering_id: "off_ghost",
+      offering_version: "1.0.0",
+    },
+    scope: {
+      scope_type: "project",
+      scope_id: manifest.project.project_id,
+    },
+    font_refs: [
+      {
+        font_id: "ghost",
+        family_name: "Ghost",
+      },
+    ],
+    activated_right_ids: ["media_web"],
+    status: "active",
+    evidence: [],
+    acquisition_source: "legacy",
+  });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const pruneResult = runCli(scriptPath, ["prune", "--path", ".", "--apply"], { cwd: tempDir });
+  assert.equal(pruneResult.status, 0);
+
+  const parsed = JSON.parse(pruneResult.stdout);
+  assert.equal(parsed.command, "prune");
+  assert.equal(parsed.dry_run, false);
+  assert.equal(parsed.removed_count, 1);
+  assert.equal(parsed.removed_license_instances_count, 1);
+  assert.equal(parsed.removed_fonts[0].font_id, "ghost");
+  assert.equal(parsed.removed_license_instances[0].license_id, "lic_ghost_001");
+
+  const updatedManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  assert.equal(updatedManifest.fonts.some((entry) => entry.font_id === "ghost"), false);
+  assert.equal(updatedManifest.fonts.some((entry) => entry.font_id === "inter"), true);
+  assert.equal(
+    updatedManifest.license_instances.some((entry) => entry.license_id === "lic_ghost_001"),
+    false,
+  );
+
+  const eventsLogPath = path.join(tempDir, ".setzkasten", "events.log");
+  const events = readFileSync(eventsLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const eventTypes = events.map((entry) => entry.event_type);
+  assert.equal(eventTypes.includes("manifest.font_pruned"), true);
+  assert.equal(eventTypes.includes("manifest.license_instance_pruned"), true);
+  assert.equal(eventTypes.includes("prune.completed"), true);
+
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("runs through symlinked entrypoint (npm bin-style execution)", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-link-"));
   const linkedScriptPath = path.join(tempDir, "setzkasten");

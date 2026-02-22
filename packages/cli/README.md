@@ -7,6 +7,7 @@ CLI-first tool for font license governance, audit logging, and deterministic pol
 - Writes an append-only event log (`.setzkasten/events.log`)
 - Adds/removes font entries
 - Scans controlled local assets for usage signals
+- Prunes manifest noise (`prune`) based on discovered files + usage signals
 - Discovers likely license files and computes deterministic `document_hash` values
 - Links license evidence files to existing license instances (`evidence add`)
 - Evaluates policy decisions (`allow`, `warn`, `escalate`)
@@ -23,6 +24,7 @@ npm install -g @setzkasten/cli
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
+setzkasten prune --path . --apply
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -39,6 +41,21 @@ setzkasten evidence add --license-id <license_id> --file <path-to-license-file>
 4. Run `setzkasten policy` to verify BYO evidence state.
 
 Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.
+
+## Prune Workflow (Manifest-only)
+1. Run a dry-run:
+```bash
+setzkasten prune --path .
+```
+2. Review candidates (`missing_font_file`, `no_usage_refs`).
+3. Apply cleanup:
+```bash
+setzkasten prune --path . --apply
+```
+4. Optional stricter rule:
+```bash
+setzkasten prune --path . --rule no-file --apply
+```
 
 ## Data written locally
 - `LICENSE_MANIFEST.json`
