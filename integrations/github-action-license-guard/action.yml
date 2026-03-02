@@ -5,6 +5,23 @@ inputs:
     description: "Path to LICENSE_MANIFEST.json"
     required: false
     default: "LICENSE_MANIFEST.json"
+  working_directory:
+    description: "Working directory where policy command should run"
+    required: false
+    default: "."
+  fail_on:
+    description: "Policy threshold that should fail the action (warn|escalate)"
+    required: false
+    default: "escalate"
+  format:
+    description: "Output format passed to setzkasten policy (json|sarif|junit)"
+    required: false
+    default: "json"
+outputs:
+  exit_code:
+    description: "Exit code returned by policy command"
+  policy_decision:
+    description: "Parsed policy decision when JSON output is used"
 runs:
   using: "node20"
-  main: "dist/index.js"
+  main: "src/index.js"

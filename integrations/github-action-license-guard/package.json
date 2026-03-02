@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo \"TODO: build action\" && exit 0",
-    "test": "echo \"TODO\" && exit 0",
-    "lint": "echo \"TODO\" && exit 0"
+    "build": "node --check src/index.js",
+    "test": "node --test \"src/**/*.test.js\"",
+    "lint": "node --check src/index.js"
   }
 }
