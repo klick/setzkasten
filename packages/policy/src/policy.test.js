@@ -139,3 +139,42 @@ test("startup preset suppresses domain-out-of-scope warnings", () => {
   assert.equal(startup.reasons.some((reason) => reason.code === "DOMAIN_OUT_OF_SCOPE"), false);
   assert.equal(startup.preset_applied, "startup");
 });
+
+test("policy exceptions suppress matching reasons", () => {
+  const manifest = baseManifest();
+  manifest.license_instances[0].evidence = [];
+  manifest.policy_exceptions = [
+    {
+      exception_id: "exc_byo_evidence",
+      code: "BYO_NO_EVIDENCE",
+      font_id: "font_1",
+      reason: "Temporary waiver",
+    },
+  ];
+
+  const result = evaluatePolicy(manifest);
+
+  assert.equal(result.decision, "allow");
+  assert.equal(result.reasons.some((reason) => reason.code === "BYO_NO_EVIDENCE"), false);
+  assert.equal(result.suppressed_reasons.some((reason) => reason.code === "BYO_NO_EVIDENCE"), true);
+  assert.equal(result.active_exception_ids.includes("exc_byo_evidence"), true);
+});
+
+test("expired policy exceptions do not suppress findings", () => {
+  const manifest = baseManifest();
+  manifest.license_instances[0].evidence = [];
+  manifest.policy_exceptions = [
+    {
+      exception_id: "exc_expired",
+      code: "BYO_NO_EVIDENCE",
+      font_id: "font_1",
+      expires_at: "2000-01-01T00:00:00.000Z",
+    },
+  ];
+
+  const result = evaluatePolicy(manifest);
+
+  assert.equal(result.decision, "warn");
+  assert.equal(result.reasons.some((reason) => reason.code === "BYO_NO_EVIDENCE"), true);
+  assert.equal(result.suppressed_reasons.length, 0);
+});

@@ -31,6 +31,7 @@ setzkasten doctor --strict
 setzkasten evidence suggest --path . --apply
 setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
+setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
 setzkasten policy
 setzkasten quote
 setzkasten migrate --apply
@@ -61,6 +62,14 @@ setzkasten evidence verify
 setzkasten evidence verify --strict
 ```
 5. Run `setzkasten policy` to verify BYO evidence state.
+
+## Policy Exceptions
+Create time-bound waivers for specific policy codes:
+```bash
+setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
+setzkasten exception list
+setzkasten exception remove --exception-id <exception_id>
+```
 
 Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.
 

@@ -41,6 +41,7 @@ Commands:
   import    Import manifest font entries from discovered repository font files
   doctor    Diagnose manifest and evidence readiness for CI usage
   evidence  Attach/update license evidence from local files
+  exception Manage policy exceptions (add, list, remove)
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
   migrate   Plan/apply manifest migration with backup safety
@@ -60,6 +61,11 @@ Import options:
 Policy options:
   --format <json|sarif|junit>       Output format for policy results (default: json)
   --preset <strict|startup|enterprise> Apply opinionated policy profile
+Exception options:
+  setzkasten exception add --code <policy_code> [--font-id <font_id>] [--license-id <license_id>]
+    [--reason <text>] [--expires-at <iso-date-time>] [--exception-id <id>]
+  setzkasten exception list
+  setzkasten exception remove --exception-id <id>
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -77,6 +83,7 @@ Examples:
   setzkasten evidence suggest --path .
   setzkasten evidence verify --strict
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
+  setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
   setzkasten policy presets
   setzkasten policy --fail-on escalate
 `;
@@ -1364,6 +1371,169 @@ async function handleEvidence(cwd, flags, positionals) {
   throw new Error(`Unknown evidence action '${action}'. Supported: add, suggest, verify`);
 }
 
+function isPolicyExceptionExpired(exception, now = new Date()) {
+  const expiresAt = asString(exception?.expires_at);
+  if (!expiresAt) {
+    return false;
+  }
+
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.valueOf())) {
+    return false;
+  }
+
+  return parsed.getTime() <= now.getTime();
+}
+
+function readPolicyExceptions(manifest) {
+  if (!Array.isArray(manifest.policy_exceptions)) {
+    return [];
+  }
+
+  return manifest.policy_exceptions.filter((entry) => isObject(entry));
+}
+
+async function handleExceptionAdd(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const code = requireStringFlag(flags, "code");
+  const reason = getStringFlag(flags, "reason") ?? "No reason provided";
+  const fontId = getStringFlag(flags, "font-id");
+  const licenseId = getStringFlag(flags, "license-id");
+  const expiresAt = getStringFlag(flags, "expires-at");
+  const exceptionId = getStringFlag(flags, "exception-id") ?? slugifyId(`${code}-${Date.now()}`, "exception");
+
+  if (!Array.isArray(manifest.policy_exceptions)) {
+    manifest.policy_exceptions = [];
+  }
+
+  if (
+    manifest.policy_exceptions.some(
+      (entry) => isObject(entry) && asString(entry.exception_id) === exceptionId,
+    )
+  ) {
+    throw new Error(`Policy exception '${exceptionId}' already exists.`);
+  }
+
+  const exception = {
+    exception_id: exceptionId,
+    code,
+    reason,
+    created_at: new Date().toISOString(),
+  };
+
+  if (fontId) {
+    exception.font_id = fontId;
+  }
+  if (licenseId) {
+    exception.license_id = licenseId;
+  }
+  if (expiresAt) {
+    exception.expires_at = expiresAt;
+  }
+
+  manifest.policy_exceptions.push(exception);
+  await saveManifest(resolvedManifestPath, manifest);
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(manifest),
+    eventType: "policy.exception_added",
+    payload: exception,
+  });
+
+  printJson({
+    ok: true,
+    command: "exception",
+    action: "add",
+    exception,
+  });
+
+  return 0;
+}
+
+async function handleExceptionList(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const exceptions = readPolicyExceptions(manifest).map((entry) => ({
+    ...entry,
+    active: !isPolicyExceptionExpired(entry),
+  }));
+
+  printJson({
+    ok: true,
+    command: "exception",
+    action: "list",
+    count: exceptions.length,
+    exceptions,
+  });
+
+  return 0;
+}
+
+async function handleExceptionRemove(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const exceptionId = requireStringFlag(flags, "exception-id");
+  const current = readPolicyExceptions(manifest);
+  const filtered = current.filter((entry) => asString(entry.exception_id) !== exceptionId);
+
+  if (filtered.length === current.length) {
+    throw new Error(`Policy exception '${exceptionId}' not found.`);
+  }
+
+  manifest.policy_exceptions = filtered;
+  await saveManifest(resolvedManifestPath, manifest);
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(manifest),
+    eventType: "policy.exception_removed",
+    payload: {
+      exception_id: exceptionId,
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "exception",
+    action: "remove",
+    exception_id: exceptionId,
+  });
+
+  return 0;
+}
+
+async function handleException(cwd, flags, positionals) {
+  const action = positionals[0] ?? "list";
+
+  if (action === "add") {
+    return handleExceptionAdd(cwd, flags);
+  }
+
+  if (action === "list") {
+    return handleExceptionList(cwd, flags);
+  }
+
+  if (action === "remove") {
+    return handleExceptionRemove(cwd, flags);
+  }
+
+  throw new Error(`Unknown exception action '${action}'. Supported: add, list, remove`);
+}
+
 async function handlePolicy(cwd, flags, positionals) {
   const action = positionals[0];
 
@@ -1607,6 +1777,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleDoctor(cwd, parsed.flags);
     case "evidence":
       return handleEvidence(cwd, parsed.flags, parsed.positionals);
+    case "exception":
+      return handleException(cwd, parsed.flags, parsed.positionals);
     case "policy":
       return handlePolicy(cwd, parsed.flags, parsed.positionals);
     case "quote":

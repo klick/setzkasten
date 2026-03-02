@@ -173,6 +173,44 @@ function validateEvidence(errors, pathName, value) {
   }
 }
 
+function validatePolicyException(errors, pathName, value) {
+  if (!isObject(value)) {
+    pushError(errors, pathName, "must be an object");
+    return;
+  }
+
+  validateString(errors, `${pathName}.exception_id`, value.exception_id, {
+    minLength: 1,
+    maxLength: 128,
+    pattern: ID_PATTERN,
+  });
+  validateString(errors, `${pathName}.code`, value.code, { minLength: 1 });
+
+  if (value.reason !== undefined) {
+    validateString(errors, `${pathName}.reason`, value.reason, { minLength: 1 });
+  }
+
+  if (value.expires_at !== undefined) {
+    validateString(errors, `${pathName}.expires_at`, value.expires_at, { minLength: 1 });
+  }
+
+  if (value.font_id !== undefined) {
+    validateString(errors, `${pathName}.font_id`, value.font_id, {
+      minLength: 1,
+      maxLength: 128,
+      pattern: ID_PATTERN,
+    });
+  }
+
+  if (value.license_id !== undefined) {
+    validateString(errors, `${pathName}.license_id`, value.license_id, {
+      minLength: 1,
+      maxLength: 128,
+      pattern: ID_PATTERN,
+    });
+  }
+}
+
 function validateLicenseOffering(errors, pathName, value) {
   if (!isObject(value)) {
     pushError(errors, pathName, "must be an object");
@@ -408,6 +446,15 @@ export async function validateManifestDocument(document) {
     if (hasOfferings) {
       for (let index = 0; index < document.license_offerings.length; index += 1) {
         validateLicenseOffering(errors, `/license_offerings[${index}]`, document.license_offerings[index]);
+      }
+    }
+  }
+
+  if (document.policy_exceptions !== undefined) {
+    const hasPolicyExceptions = validateArray(errors, "/policy_exceptions", document.policy_exceptions);
+    if (hasPolicyExceptions) {
+      for (let index = 0; index < document.policy_exceptions.length; index += 1) {
+        validatePolicyException(errors, `/policy_exceptions[${index}]`, document.policy_exceptions[index]);
       }
     }
   }

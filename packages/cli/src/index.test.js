@@ -144,6 +144,64 @@ test("policy strict preset escalates warnings", () => {
   assert.equal(strictParsed.preset_applied, "strict");
 });
 
+test("exception add/list/remove controls policy suppression", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-exception-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Exception Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addFont = runCli(
+    scriptPath,
+    ["add", "--font-id", "ghost", "--family", "Ghost", "--source", "byo"],
+    { cwd: tempDir },
+  );
+  assert.equal(addFont.status, 0);
+
+  const beforePolicy = runCli(scriptPath, ["policy"], { cwd: tempDir });
+  assert.equal(beforePolicy.status, 0);
+  assert.equal(JSON.parse(beforePolicy.stdout).decision, "warn");
+
+  const addException = runCli(
+    scriptPath,
+    [
+      "exception",
+      "add",
+      "--exception-id",
+      "exc_ghost",
+      "--code",
+      "BYO_NO_LICENSE_INSTANCE",
+      "--font-id",
+      "ghost",
+      "--reason",
+      "Temporary waiver",
+    ],
+    { cwd: tempDir },
+  );
+  assert.equal(addException.status, 0);
+
+  const listExceptions = runCli(scriptPath, ["exception", "list"], { cwd: tempDir });
+  assert.equal(listExceptions.status, 0);
+  const listed = JSON.parse(listExceptions.stdout);
+  assert.equal(listed.count, 1);
+  assert.equal(listed.exceptions[0].active, true);
+
+  const suppressedPolicy = runCli(scriptPath, ["policy"], { cwd: tempDir });
+  assert.equal(suppressedPolicy.status, 0);
+  const suppressedParsed = JSON.parse(suppressedPolicy.stdout);
+  assert.equal(suppressedParsed.decision, "allow");
+  assert.equal(suppressedParsed.suppressed_reasons.length, 1);
+
+  const removeException = runCli(scriptPath, ["exception", "remove", "--exception-id", "exc_ghost"], {
+    cwd: tempDir,
+  });
+  assert.equal(removeException.status, 0);
+
+  const afterPolicy = runCli(scriptPath, ["policy"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(afterPolicy.status, 0);
+  assert.equal(JSON.parse(afterPolicy.stdout).decision, "warn");
+});
+
 test("import dry-run lists candidates without mutating manifest", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-import-dry-"));
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });

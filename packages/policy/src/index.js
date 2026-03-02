@@ -101,6 +101,45 @@ function normalizeRights(value) {
 
 export const POLICY_PRESETS = ["strict", "startup", "enterprise"];
 
+function readPolicyExceptions(manifest) {
+  const raw = Array.isArray(manifest.policy_exceptions) ? manifest.policy_exceptions : [];
+  return raw.filter((entry) => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+}
+
+function isExceptionExpired(exception, now = new Date()) {
+  const expiresAt = asString(exception.expires_at);
+  if (!expiresAt) {
+    return false;
+  }
+
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.valueOf())) {
+    return false;
+  }
+
+  return parsed.getTime() <= now.getTime();
+}
+
+function doesExceptionMatchReason(exception, reason) {
+  if (asString(exception.code) !== asString(reason.code)) {
+    return false;
+  }
+
+  const exceptionFontId = asString(exception.font_id);
+  const exceptionLicenseId = asString(exception.license_id);
+  const reasonContext = asObject(reason.context);
+
+  if (exceptionFontId && asString(reasonContext?.font_id) !== exceptionFontId) {
+    return false;
+  }
+
+  if (exceptionLicenseId && asString(reasonContext?.license_id) !== exceptionLicenseId) {
+    return false;
+  }
+
+  return true;
+}
+
 export function evaluatePolicy(manifest) {
   const reasons = [];
   const evidenceRequired = new Set();
@@ -265,9 +304,37 @@ export function evaluatePolicy(manifest) {
     }
   }
 
+  const activeExceptions = readPolicyExceptions(manifest).filter((exception) => !isExceptionExpired(exception));
+  const activeExceptionIds = activeExceptions
+    .map((entry) => asString(entry.exception_id))
+    .filter((entry) => typeof entry === "string")
+    .sort((a, b) => a.localeCompare(b));
+
+  const suppressedReasons = [];
+  const effectiveReasons = [];
+
+  for (const reason of reasons) {
+    const matchedException = activeExceptions.find((exception) => doesExceptionMatchReason(exception, reason));
+    if (matchedException) {
+      suppressedReasons.push({
+        ...reason,
+        suppressed_by_exception_id: asString(matchedException.exception_id) ?? "unknown_exception",
+      });
+      continue;
+    }
+
+    effectiveReasons.push(reason);
+  }
+
+  if (!effectiveReasons.some((reason) => reason.code === "BYO_NO_LICENSE_INSTANCE" || reason.code === "BYO_NO_EVIDENCE")) {
+    evidenceRequired.delete("license_instances[].evidence[]");
+  }
+
   return {
-    decision: makeDecision(reasons),
-    reasons,
+    decision: makeDecision(effectiveReasons),
+    reasons: effectiveReasons,
+    suppressed_reasons: suppressedReasons,
+    active_exception_ids: activeExceptionIds,
     evidence_required: Array.from(evidenceRequired).sort((a, b) => a.localeCompare(b)),
   };
 }
