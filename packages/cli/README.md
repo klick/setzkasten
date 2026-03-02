@@ -33,6 +33,7 @@ setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
 setzkasten report --format markdown --output compliance-report.md
+setzkasten sync export
 setzkasten policy
 setzkasten quote
 setzkasten migrate --apply
@@ -77,6 +78,13 @@ Generate a governance snapshot in JSON or Markdown:
 ```bash
 setzkasten report --format json
 setzkasten report --format markdown --output compliance-report.md
+```
+
+## Sync Snapshot
+Export a stable local snapshot for dashboard/API consumers:
+```bash
+setzkasten sync export
+setzkasten sync export --output .setzkasten/sync/project-a.json
 ```
 
 Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.

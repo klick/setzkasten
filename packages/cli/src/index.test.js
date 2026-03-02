@@ -620,6 +620,28 @@ test("report writes markdown output file", () => {
   assert.match(markdown, /## Policy/);
 });
 
+test("sync export writes default snapshot file", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-sync-export-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Sync Export Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const syncResult = runCli(scriptPath, ["sync", "export"], { cwd: tempDir });
+  assert.equal(syncResult.status, 0);
+
+  const parsed = JSON.parse(syncResult.stdout);
+  assert.equal(parsed.command, "sync");
+  assert.equal(parsed.action, "export");
+  assert.equal(typeof parsed.snapshot_hash, "string");
+  assert.equal(parsed.snapshot_hash.length, 64);
+
+  const snapshotPath = path.join(tempDir, ".setzkasten", "sync", "latest.json");
+  const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(snapshot.project.name, "Sync Export Demo");
+  assert.equal(snapshot.snapshot_hash, parsed.snapshot_hash);
+});
+
 test("runs through symlinked entrypoint (npm bin-style execution)", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-link-"));
   const linkedScriptPath = path.join(tempDir, "setzkasten");

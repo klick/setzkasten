@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,7 @@ Commands:
   evidence  Attach/update license evidence from local files
   exception Manage policy exceptions (add, list, remove)
   report    Generate project governance report (json or markdown)
+  sync      Export project snapshot for local dashboards/API consumers
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
   migrate   Plan/apply manifest migration with backup safety
@@ -70,6 +71,9 @@ Exception options:
 Report options:
   --format <json|markdown>          Report format (default: markdown)
   --output <path>                   Write report output to file
+Sync options:
+  setzkasten sync export [--output <path>]
+    Exports snapshot to .setzkasten/sync/latest.json by default
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -89,6 +93,7 @@ Examples:
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
   setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
   setzkasten report --format markdown --output compliance-report.md
+  setzkasten sync export
   setzkasten policy presets
   setzkasten policy --fail-on escalate
 `;
@@ -1837,6 +1842,82 @@ async function handleReport(cwd, flags) {
   return 0;
 }
 
+async function handleSyncExport(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const outputInput = getStringFlag(flags, "output") ?? path.join(".setzkasten", "sync", "latest.json");
+  const outputPath = path.isAbsolute(outputInput)
+    ? outputInput
+    : path.resolve(projectRoot, outputInput);
+
+  const policy = evaluatePolicy(manifest);
+  const quote = generateQuote(manifest);
+
+  const baseSnapshot = {
+    generated_at: new Date().toISOString(),
+    manifest_version: asString(manifest.manifest_version) ?? "unknown",
+    project: {
+      project_id: asString(manifest?.project?.project_id) ?? "unknown_project",
+      name: asString(manifest?.project?.name) ?? "Unknown Project",
+    },
+    policy: {
+      decision: policy.decision,
+      reasons_count: Array.isArray(policy.reasons) ? policy.reasons.length : 0,
+      suppressed_reasons_count: Array.isArray(policy.suppressed_reasons) ? policy.suppressed_reasons.length : 0,
+    },
+    quote: {
+      totals: quote.totals,
+      line_items_count: Array.isArray(quote.line_items) ? quote.line_items.length : 0,
+      deterministic_hash: quote.deterministic_hash,
+    },
+    fonts: summarizeFonts(manifest),
+    evidence: summarizeEvidenceHealth(manifest),
+  };
+
+  const snapshotHash = sha256Hex(JSON.stringify(baseSnapshot));
+  const snapshot = {
+    ...baseSnapshot,
+    snapshot_hash: snapshotHash,
+  };
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(manifest),
+    eventType: "sync.exported",
+    payload: {
+      output_path: outputPath,
+      snapshot_hash: snapshotHash,
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "sync",
+    action: "export",
+    output_path: outputPath,
+    snapshot_hash: snapshotHash,
+  });
+
+  return 0;
+}
+
+async function handleSync(cwd, flags, positionals) {
+  const action = positionals[0] ?? "export";
+
+  if (action === "export") {
+    return handleSyncExport(cwd, flags);
+  }
+
+  throw new Error(`Unknown sync action '${action}'. Supported: export`);
+}
+
 async function handleMigrate(cwd, flags) {
   const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
   const resolvedManifestPath = providedManifestPath ?? findUp(MANIFEST_FILENAME, cwd);
@@ -1999,6 +2080,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handlePolicy(cwd, parsed.flags, parsed.positionals);
     case "report":
       return handleReport(cwd, parsed.flags);
+    case "sync":
+      return handleSync(cwd, parsed.flags, parsed.positionals);
     case "quote":
       return handleQuote(cwd, parsed.flags);
     case "migrate":
