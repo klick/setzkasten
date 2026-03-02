@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-03-02
+- Added `doctor` command for manifest/event/evidence diagnostics with strict mode.
+- Added `import` command for dry-run/apply bootstrap of manifest fonts from discovered files.
+- Added CI-oriented serializers: `--format sarif|junit` for `scan` and `policy`.
+- Implemented GitHub Action License Guard integration (`integrations/github-action-license-guard`).
+- Added `evidence suggest` and `evidence verify` workflows.
+- Replaced migrate stub with dry-run/apply migration and backup behavior.
+- Added policy presets (`strict`, `startup`, `enterprise`) and `policy presets`.
+- Added policy exception workflow (`exception add|list|remove`) with suppression and expiry behavior.
+- Added `report` command (`json` / `markdown`) with optional file output.
+- Added `sync export` snapshot command for local dashboard/API consumers.
+- Added roadmap artifacts under `docs/roadmap/growth-2026`.
+
 ## 0.1.0-rc.7 - 2026-02-22
 - Added new `prune` command for manifest-only cleanup of stale font entries.
 - `prune` defaults to dry-run and supports `--apply`, `--rule`, and `--max-removals`.
