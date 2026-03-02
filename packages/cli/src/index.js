@@ -51,10 +51,13 @@ Scan options:
   --discover                        Discover existing font files and font-adjacent license files
   --max-discovered-files <n>        Max discovered font files in output (default: 200)
   --max-discovered-license-files <n> Max discovered license files in output (default: 200)
+  --format <json|sarif|junit>       Output format for scan results (default: json)
 Import options:
   --path <dir>                 Directory to scan for import candidates (default: project root)
   --source <oss|byo>           Source type assigned to imported fonts (default: byo)
   --apply                      Apply candidate imports (default is dry-run)
+Policy options:
+  --format <json|sarif|junit>       Output format for policy results (default: json)
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -297,6 +300,156 @@ function resolveUniqueFontId(baseId, reservedIds) {
   throw new Error("Could not generate unique font_id for imported font candidate.");
 }
 
+function getOutputFormat(flags) {
+  const format = (getStringFlag(flags, "format") ?? "json").toLowerCase();
+  const supported = new Set(["json", "sarif", "junit"]);
+  if (!supported.has(format)) {
+    throw new Error("--format must be one of: json, sarif, junit");
+  }
+  return format;
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function printText(value) {
+  process.stdout.write(`${value}\n`);
+}
+
+function findingsToSarif(commandName, findings) {
+  const rulesById = new Map();
+
+  for (const finding of findings) {
+    if (!rulesById.has(finding.rule_id)) {
+      rulesById.set(finding.rule_id, {
+        id: finding.rule_id,
+        name: finding.rule_id,
+        shortDescription: {
+          text: finding.rule_id,
+        },
+      });
+    }
+  }
+
+  return {
+    version: "2.1.0",
+    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: `setzkasten/${commandName}`,
+            rules: Array.from(rulesById.values()),
+          },
+        },
+        results: findings.map((finding) => ({
+          ruleId: finding.rule_id,
+          level: finding.level,
+          message: { text: finding.message },
+          properties: finding.properties ?? {},
+        })),
+      },
+    ],
+  };
+}
+
+function findingsToJunit(suiteName, findings) {
+  const testcaseXml = findings
+    .map((finding, index) => {
+      const caseName = `${finding.rule_id}-${index + 1}`;
+      const message = xmlEscape(finding.message);
+      const propertiesJson = xmlEscape(JSON.stringify(finding.properties ?? {}));
+
+      if (finding.level === "error" || finding.level === "warning") {
+        return `  <testcase classname="${xmlEscape(suiteName)}" name="${xmlEscape(caseName)}"><failure type="${xmlEscape(finding.level)}" message="${message}">${propertiesJson}</failure></testcase>`;
+      }
+
+      return `  <testcase classname="${xmlEscape(suiteName)}" name="${xmlEscape(caseName)}" />`;
+    })
+    .join("\n");
+
+  const failures = findings.filter((finding) => finding.level === "error" || finding.level === "warning").length;
+  const tests = findings.length > 0 ? findings.length : 1;
+
+  if (findings.length === 0) {
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="${xmlEscape(
+      suiteName,
+    )}" tests="1" failures="0">\n  <testcase classname="${xmlEscape(
+      suiteName,
+    )}" name="no-findings" />\n</testsuite>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="${xmlEscape(
+    suiteName,
+  )}" tests="${tests}" failures="${failures}">\n${testcaseXml}\n</testsuite>`;
+}
+
+function policyToFindings(policy) {
+  if (!Array.isArray(policy.reasons)) {
+    return [];
+  }
+
+  return policy.reasons.map((reason) => {
+    const severity = reason?.severity === "escalate" ? "error" : "warning";
+    return {
+      rule_id: reason?.code ?? "POLICY_REASON",
+      level: severity,
+      message: reason?.message ?? "Policy finding",
+      properties: reason?.context ?? {},
+    };
+  });
+}
+
+function scanToFindings(scanResult) {
+  const findings = [];
+  const fontMatches = isObject(scanResult.font_matches) ? scanResult.font_matches : {};
+  for (const [fontId, match] of Object.entries(fontMatches)) {
+    if (!isObject(match)) {
+      continue;
+    }
+
+    const matchCount = typeof match.match_count === "number" ? match.match_count : 0;
+    findings.push({
+      rule_id: matchCount > 0 ? "SCAN_FONT_USAGE_MATCH" : "SCAN_FONT_NO_USAGE_MATCH",
+      level: matchCount > 0 ? "note" : "warning",
+      message:
+        matchCount > 0
+          ? `Font '${fontId}' has ${matchCount} usage match(es).`
+          : `Font '${fontId}' has no usage matches.`,
+      properties: {
+        font_id: fontId,
+        match_count: matchCount,
+      },
+    });
+  }
+
+  const discoveredLicenses = Array.isArray(scanResult.discovered_license_files)
+    ? scanResult.discovered_license_files
+    : [];
+  for (const entry of discoveredLicenses) {
+    const detected = asString(entry.detected_license);
+    findings.push({
+      rule_id: detected ? "SCAN_LICENSE_DETECTED" : "SCAN_LICENSE_UNKNOWN",
+      level: detected ? "note" : "warning",
+      message: detected
+        ? `Detected '${detected}' in '${entry.path}'.`
+        : `Could not detect a known license in '${entry.path}'.`,
+      properties: {
+        path: entry.path,
+        detected_license: detected,
+      },
+    });
+  }
+
+  return findings;
+}
+
 async function handleInit(cwd, flags) {
   const force = getBooleanFlag(flags, "force");
   const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
@@ -483,11 +636,18 @@ async function handleScan(cwd, flags) {
     },
   });
 
-  printJson({
-    ok: true,
-    command: "scan",
-    result: scanResult,
-  });
+  const format = getOutputFormat(flags);
+  if (format === "json") {
+    printJson({
+      ok: true,
+      command: "scan",
+      result: scanResult,
+    });
+  } else if (format === "sarif") {
+    printJson(findingsToSarif("scan", scanToFindings(scanResult)));
+  } else {
+    printText(findingsToJunit("setzkasten.scan", scanToFindings(scanResult)));
+  }
 
   return 0;
 }
@@ -915,7 +1075,15 @@ async function handlePolicy(cwd, flags) {
     },
   });
 
-  printJson(policy);
+  const format = getOutputFormat(flags);
+  const findings = policyToFindings(policy);
+  if (format === "json") {
+    printJson(policy);
+  } else if (format === "sarif") {
+    printJson(findingsToSarif("policy", findings));
+  } else {
+    printText(findingsToJunit("setzkasten.policy", findings));
+  }
 
   const failOn = getStringFlag(flags, "fail-on") ?? "escalate";
   if (failOn === "warn") {

@@ -11,6 +11,7 @@ CLI-first tool for font license governance, audit logging, and deterministic pol
 - Discovers likely license files and computes deterministic `document_hash` values
 - Links license evidence files to existing license instances (`evidence add`)
 - Evaluates policy decisions (`allow`, `warn`, `escalate`)
+- Emits `json`, `sarif`, or `junit` output for `scan` and `policy`
 - Generates deterministic quote output
 - Provides a migration stub command
 

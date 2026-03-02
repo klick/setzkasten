@@ -54,10 +54,12 @@ node packages/cli/src/index.js quote
 
 ## License Workflow
 - `scan --discover` finds font files and font-adjacent license files in the repository.
+- `scan --format sarif` / `scan --format junit` enables CI-native output.
 - Root scans ignore dependency directories like `node_modules` and `vendor` by default.
 - Discovered license files include a deterministic `document_hash` (sha256) in CLI output.
 - `evidence add` links a local license document hash to a `license_instance`.
 - `policy` warns when BYO fonts have no linked license instance or no evidence.
+- `policy --format sarif` / `policy --format junit` provides code-scanning and test-report outputs.
 
 ## Documentation
 - V1 feature cut: `docs/specs/v1-feature-set.md`

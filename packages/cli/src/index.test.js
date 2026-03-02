@@ -60,6 +60,52 @@ test("scan --discover prints discovered font files", () => {
   );
 });
 
+test("scan supports --format sarif", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-scan-sarif-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Inter-Regular.woff2"), "font-binary");
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Scan Sarif Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+  const addResult = runCli(
+    scriptPath,
+    ["add", "--font-id", "inter", "--family", "Inter", "--source", "oss"],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const scanResult = runCli(scriptPath, ["scan", "--path", ".", "--discover", "--format", "sarif"], {
+    cwd: tempDir,
+  });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(scanResult.status, 0);
+  const parsed = JSON.parse(scanResult.stdout);
+  assert.equal(parsed.version, "2.1.0");
+  assert.equal(Array.isArray(parsed.runs), true);
+  assert.equal(parsed.runs.length > 0, true);
+});
+
+test("policy supports --format junit", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-policy-junit-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Policy JUnit Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addResult = runCli(
+    scriptPath,
+    ["add", "--font-id", "ghost", "--family", "Ghost", "--source", "byo"],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const policyResult = runCli(scriptPath, ["policy", "--format", "junit"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(policyResult.status, 0);
+  assert.match(policyResult.stdout, /<testsuite/);
+  assert.match(policyResult.stdout, /<failure/);
+});
+
 test("import dry-run lists candidates without mutating manifest", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-import-dry-"));
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
