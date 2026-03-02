@@ -60,6 +60,61 @@ test("scan --discover prints discovered font files", () => {
   );
 });
 
+test("import dry-run lists candidates without mutating manifest", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-import-dry-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Merriweather-Regular.woff2"), "font-binary");
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Import Dry Run Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const importResult = runCli(scriptPath, ["import", "--path", "."], { cwd: tempDir });
+  assert.equal(importResult.status, 0);
+
+  const parsed = JSON.parse(importResult.stdout);
+  assert.equal(parsed.command, "import");
+  assert.equal(parsed.dry_run, true);
+  assert.equal(parsed.candidates_count, 1);
+  assert.equal(parsed.candidates[0].family_name, "Merriweather");
+
+  const manifest = JSON.parse(readFileSync(path.join(tempDir, "LICENSE_MANIFEST.json"), "utf8"));
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(manifest.fonts.length, 0);
+});
+
+test("import --apply adds discovered font candidates to manifest", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-import-apply-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Merriweather-Regular.woff2"), "font-binary");
+  writeFileSync(path.join(tempDir, "assets", "fonts", "Roboto-Regular.woff2"), "font-binary");
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Import Apply Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const importResult = runCli(scriptPath, ["import", "--path", ".", "--apply"], { cwd: tempDir });
+  assert.equal(importResult.status, 0);
+  const parsed = JSON.parse(importResult.stdout);
+  assert.equal(parsed.command, "import");
+  assert.equal(parsed.dry_run, false);
+  assert.equal(parsed.imported_count, 2);
+
+  const manifest = JSON.parse(readFileSync(path.join(tempDir, "LICENSE_MANIFEST.json"), "utf8"));
+  assert.equal(manifest.fonts.length, 2);
+  assert.equal(manifest.fonts.every((font) => font.source.type === "byo"), true);
+
+  const eventsLogPath = path.join(tempDir, ".setzkasten", "events.log");
+  const eventTypes = readFileSync(eventsLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line).event_type);
+
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(eventTypes.includes("manifest.font_imported"), true);
+  assert.equal(eventTypes.includes("import.completed"), true);
+});
+
 test("doctor reports missing manifest and exits non-zero", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-doctor-missing-"));
   const doctorResult = runCli(scriptPath, ["doctor"], { cwd: tempDir });

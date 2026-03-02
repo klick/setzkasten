@@ -37,6 +37,7 @@ Commands:
   add       Add font entry to manifest
   remove    Remove font entry from manifest
   scan      Scan local repository usage and optionally discover font/license files
+  import    Import manifest font entries from discovered repository font files
   doctor    Diagnose manifest and evidence readiness for CI usage
   evidence  Attach/update license evidence from local files
   policy    Evaluate policy decision (allow|warn|escalate)
@@ -50,6 +51,10 @@ Scan options:
   --discover                        Discover existing font files and font-adjacent license files
   --max-discovered-files <n>        Max discovered font files in output (default: 200)
   --max-discovered-license-files <n> Max discovered license files in output (default: 200)
+Import options:
+  --path <dir>                 Directory to scan for import candidates (default: project root)
+  --source <oss|byo>           Source type assigned to imported fonts (default: byo)
+  --apply                      Apply candidate imports (default is dry-run)
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -58,6 +63,8 @@ Evidence options:
 
 Examples:
   setzkasten init --name "Acme Project"
+  setzkasten import --path .
+  setzkasten import --path . --apply
   setzkasten add --font-id inter --family "Inter" --source oss
   setzkasten scan --path . --discover
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
@@ -270,6 +277,26 @@ function createDoctorCheck(input) {
   return check;
 }
 
+function resolveUniqueFontId(baseId, reservedIds) {
+  const normalizedBase = slugifyId(baseId || "font", "font");
+  if (!reservedIds.has(normalizedBase)) {
+    reservedIds.add(normalizedBase);
+    return normalizedBase;
+  }
+
+  let index = 2;
+  while (index < 10000) {
+    const candidate = slugifyId(`${normalizedBase}-${index}`, "font");
+    if (!reservedIds.has(candidate)) {
+      reservedIds.add(candidate);
+      return candidate;
+    }
+    index += 1;
+  }
+
+  throw new Error("Could not generate unique font_id for imported font candidate.");
+}
+
 async function handleInit(cwd, flags) {
   const force = getBooleanFlag(flags, "force");
   const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
@@ -460,6 +487,146 @@ async function handleScan(cwd, flags) {
     ok: true,
     command: "scan",
     result: scanResult,
+  });
+
+  return 0;
+}
+
+async function handleImport(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const scanRoot = path.resolve(cwd, getStringFlag(flags, "path") ?? projectRoot);
+  const sourceType = getStringFlag(flags, "source") ?? "byo";
+  const apply = getBooleanFlag(flags, "apply");
+  const maxDiscoveredFilesInput = Number(getStringFlag(flags, "max-discovered-files") ?? "200");
+  const maxDiscoveredFiles =
+    Number.isFinite(maxDiscoveredFilesInput) && maxDiscoveredFilesInput > 0 ? maxDiscoveredFilesInput : 200;
+
+  if (sourceType !== "oss" && sourceType !== "byo") {
+    throw new Error("--source must be either 'oss' or 'byo'.");
+  }
+
+  const scanResult = await scanProject({
+    rootPath: scanRoot,
+    manifest,
+    maxMatchedPathsPerFont: 0,
+    maxDiscoveredFiles,
+    maxDiscoveredLicenseFiles: 0,
+    discover: true,
+  });
+
+  const discoveredFonts = Array.isArray(scanResult.discovered_font_files)
+    ? scanResult.discovered_font_files
+    : [];
+  const existingFonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+  const existingFontIds = new Set(
+    existingFonts
+      .map((entry) => asString(entry?.font_id))
+      .filter((entry) => typeof entry === "string")
+      .map((entry) => entry.toLowerCase()),
+  );
+  const usedImportIds = new Set();
+  const candidates = [];
+
+  for (const entry of discoveredFonts) {
+    if (!isObject(entry)) {
+      continue;
+    }
+
+    const pathValue = asString(entry.path);
+    const familyGuess = asString(entry.family_guess);
+    const fontIdGuess = asString(entry.font_id_guess);
+    const fileName = asString(entry.file_name) ?? "font-file";
+
+    if (!pathValue || !familyGuess) {
+      continue;
+    }
+
+    const normalizedGuess = (fontIdGuess ?? slugifyId(familyGuess, "font")).toLowerCase();
+    if (existingFontIds.has(normalizedGuess)) {
+      continue;
+    }
+
+    const chosenFontId = resolveUniqueFontId(fontIdGuess ?? familyGuess, usedImportIds);
+    existingFontIds.add(chosenFontId.toLowerCase());
+
+    candidates.push({
+      font_id: chosenFontId,
+      family_name: familyGuess,
+      source_type: sourceType,
+      discovered_from_path: pathValue,
+      discovered_file_name: fileName,
+      discovered_extension: asString(entry.extension),
+    });
+  }
+
+  if (!apply) {
+    printJson({
+      ok: true,
+      command: "import",
+      dry_run: true,
+      root_path: scanResult.root_path,
+      source_type: sourceType,
+      candidates_count: candidates.length,
+      candidates,
+    });
+    return 0;
+  }
+
+  let updatedManifest = manifest;
+
+  for (const candidate of candidates) {
+    updatedManifest = addFontToManifest(updatedManifest, {
+      font_id: candidate.font_id,
+      family_name: candidate.family_name,
+      source: {
+        type: sourceType,
+        notes: `Imported from ${candidate.discovered_from_path}`,
+      },
+      license_instance_ids: [],
+    });
+  }
+
+  await saveManifest(resolvedManifestPath, updatedManifest);
+
+  for (const candidate of candidates) {
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(updatedManifest),
+      eventType: "manifest.font_imported",
+      payload: {
+        font_id: candidate.font_id,
+        family_name: candidate.family_name,
+        source_type: sourceType,
+        discovered_from_path: candidate.discovered_from_path,
+      },
+    });
+  }
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(updatedManifest),
+    eventType: "import.completed",
+    payload: {
+      root_path: scanResult.root_path,
+      source_type: sourceType,
+      imported_count: candidates.length,
+      discovered_count: discoveredFonts.length,
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "import",
+    dry_run: false,
+    root_path: scanResult.root_path,
+    source_type: sourceType,
+    imported_count: candidates.length,
+    imported: candidates,
   });
 
   return 0;
@@ -842,6 +1009,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleRemove(cwd, parsed.flags);
     case "scan":
       return handleScan(cwd, parsed.flags);
+    case "import":
+      return handleImport(cwd, parsed.flags);
     case "doctor":
       return handleDoctor(cwd, parsed.flags);
     case "evidence":

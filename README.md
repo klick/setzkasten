@@ -18,6 +18,7 @@ npm install -g @setzkasten/cli
 ## Quick Start (Global Install)
 ```bash
 setzkasten init --name "My Project"
+setzkasten import --path . --apply
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
 setzkasten doctor --strict
@@ -30,6 +31,7 @@ setzkasten quote
 ```bash
 npm run build
 node packages/cli/src/index.js init
+node packages/cli/src/index.js import --path . --apply
 node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
 node packages/cli/src/index.js scan --discover
 node packages/cli/src/index.js doctor --strict
@@ -43,6 +45,7 @@ node packages/cli/src/index.js quote
 - `add`
 - `remove`
 - `scan`
+- `import`
 - `doctor`
 - `evidence add`
 - `policy`
