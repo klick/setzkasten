@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluatePolicy } from "./index.js";
+import { applyPolicyPreset, evaluatePolicy } from "./index.js";
 
 function baseManifest() {
   return {
@@ -112,4 +112,30 @@ test("returns allow when no policy findings are present", () => {
 
   assert.equal(result.decision, "allow");
   assert.equal(result.reasons.length, 0);
+});
+
+test("strict preset escalates warnings", () => {
+  const manifest = baseManifest();
+  manifest.license_instances[0].evidence = [];
+
+  const result = evaluatePolicy(manifest);
+  const strict = applyPolicyPreset(result, "strict");
+
+  assert.equal(result.decision, "warn");
+  assert.equal(strict.decision, "escalate");
+  assert.equal(strict.preset_applied, "strict");
+  assert.equal(strict.reasons.some((reason) => reason.severity === "escalate"), true);
+});
+
+test("startup preset suppresses domain-out-of-scope warnings", () => {
+  const manifest = baseManifest();
+  manifest.project.domains = ["example.com", "outside.example"];
+  manifest.license_instances[0].scope.domains = ["example.com"];
+
+  const result = evaluatePolicy(manifest);
+  const startup = applyPolicyPreset(result, "startup");
+
+  assert.equal(result.reasons.some((reason) => reason.code === "DOMAIN_OUT_OF_SCOPE"), true);
+  assert.equal(startup.reasons.some((reason) => reason.code === "DOMAIN_OUT_OF_SCOPE"), false);
+  assert.equal(startup.preset_applied, "startup");
 });

@@ -99,6 +99,8 @@ function normalizeRights(value) {
   return value.filter((entry) => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
 }
 
+export const POLICY_PRESETS = ["strict", "startup", "enterprise"];
+
 export function evaluatePolicy(manifest) {
   const reasons = [];
   const evidenceRequired = new Set();
@@ -267,5 +269,67 @@ export function evaluatePolicy(manifest) {
     decision: makeDecision(reasons),
     reasons,
     evidence_required: Array.from(evidenceRequired).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+export function applyPolicyPreset(policy, preset) {
+  if (!preset) {
+    return {
+      ...policy,
+    };
+  }
+
+  if (!POLICY_PRESETS.includes(preset)) {
+    throw new Error(`Unknown policy preset '${preset}'. Supported: ${POLICY_PRESETS.join(", ")}`);
+  }
+
+  const reasons = Array.isArray(policy.reasons)
+    ? policy.reasons.map((reason) => {
+        return {
+          ...reason,
+          context:
+            reason && typeof reason.context === "object" && !Array.isArray(reason.context)
+              ? { ...reason.context }
+              : reason?.context,
+        };
+      })
+    : [];
+
+  let transformed = reasons;
+
+  if (preset === "strict") {
+    transformed = reasons.map((reason) => {
+      if (reason.severity !== "warn") {
+        return reason;
+      }
+      return {
+        ...reason,
+        severity: "escalate",
+      };
+    });
+  }
+
+  if (preset === "startup") {
+    transformed = reasons.filter((reason) => reason.code !== "DOMAIN_OUT_OF_SCOPE");
+  }
+
+  if (preset === "enterprise") {
+    const enterpriseEscalationCodes = new Set(["BYO_NO_LICENSE_INSTANCE", "BYO_NO_EVIDENCE"]);
+    transformed = reasons.map((reason) => {
+      if (reason.severity !== "warn" || !enterpriseEscalationCodes.has(reason.code)) {
+        return reason;
+      }
+      return {
+        ...reason,
+        severity: "escalate",
+      };
+    });
+  }
+
+  return {
+    ...policy,
+    preset_applied: preset,
+    decision: makeDecision(transformed),
+    reasons: transformed,
   };
 }

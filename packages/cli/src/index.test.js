@@ -106,6 +106,44 @@ test("policy supports --format junit", () => {
   assert.match(policyResult.stdout, /<failure/);
 });
 
+test("policy presets command lists available presets", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-policy-presets-"));
+  const result = runCli(scriptPath, ["policy", "presets"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(result.status, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.action, "presets");
+  assert.equal(Array.isArray(parsed.presets), true);
+  assert.equal(parsed.presets.some((entry) => entry.name === "strict"), true);
+});
+
+test("policy strict preset escalates warnings", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-policy-strict-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Policy Preset Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addResult = runCli(
+    scriptPath,
+    ["add", "--font-id", "ghost", "--family", "Ghost", "--source", "byo"],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const defaultPolicy = runCli(scriptPath, ["policy"], { cwd: tempDir });
+  assert.equal(defaultPolicy.status, 0);
+  const defaultParsed = JSON.parse(defaultPolicy.stdout);
+  assert.equal(defaultParsed.decision, "warn");
+
+  const strictPolicy = runCli(scriptPath, ["policy", "--preset", "strict"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(strictPolicy.status, 2);
+  const strictParsed = JSON.parse(strictPolicy.stdout);
+  assert.equal(strictParsed.decision, "escalate");
+  assert.equal(strictParsed.preset_applied, "strict");
+});
+
 test("import dry-run lists candidates without mutating manifest", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-import-dry-"));
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });

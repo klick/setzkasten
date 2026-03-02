@@ -23,7 +23,7 @@ import {
   saveManifest,
   upsertLicenseEvidence,
 } from "./lib/manifest-lib.js";
-import { evaluatePolicy } from "./lib/policy.js";
+import { POLICY_PRESETS, applyPolicyPreset, evaluatePolicy } from "./lib/policy.js";
 import { generateQuote } from "./lib/quote.js";
 import { applyScanResultToManifest, scanProject } from "./lib/scanner.js";
 
@@ -59,6 +59,7 @@ Import options:
   --apply                      Apply candidate imports (default is dry-run)
 Policy options:
   --format <json|sarif|junit>       Output format for policy results (default: json)
+  --preset <strict|startup|enterprise> Apply opinionated policy profile
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -76,6 +77,7 @@ Examples:
   setzkasten evidence suggest --path .
   setzkasten evidence verify --strict
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
+  setzkasten policy presets
   setzkasten policy --fail-on escalate
 `;
 
@@ -1362,14 +1364,32 @@ async function handleEvidence(cwd, flags, positionals) {
   throw new Error(`Unknown evidence action '${action}'. Supported: add, suggest, verify`);
 }
 
-async function handlePolicy(cwd, flags) {
+async function handlePolicy(cwd, flags, positionals) {
+  const action = positionals[0];
+
+  if (action === "presets") {
+    printJson({
+      ok: true,
+      command: "policy",
+      action: "presets",
+      presets: POLICY_PRESETS.map((name) => ({ name })),
+    });
+    return 0;
+  }
+
+  if (action) {
+    throw new Error(`Unknown policy action '${action}'. Supported: presets`);
+  }
+
   const manifestPath = resolveManifestPathFromFlag(cwd, flags);
   const { manifest, projectRoot } = await loadManifest({
     cwd,
     manifestPath,
   });
 
-  const policy = evaluatePolicy(manifest);
+  const preset = getStringFlag(flags, "preset");
+  const basePolicy = evaluatePolicy(manifest);
+  const policy = preset ? applyPolicyPreset(basePolicy, preset) : basePolicy;
 
   await appendProjectEvent({
     projectRoot,
@@ -1379,6 +1399,7 @@ async function handlePolicy(cwd, flags) {
       decision: policy.decision,
       reasons_count: policy.reasons.length,
       evidence_required: policy.evidence_required,
+      preset: preset ?? null,
     },
   });
 
@@ -1587,7 +1608,7 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
     case "evidence":
       return handleEvidence(cwd, parsed.flags, parsed.positionals);
     case "policy":
-      return handlePolicy(cwd, parsed.flags);
+      return handlePolicy(cwd, parsed.flags, parsed.positionals);
     case "quote":
       return handleQuote(cwd, parsed.flags);
     case "migrate":

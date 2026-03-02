@@ -68,6 +68,7 @@ node packages/cli/src/index.js quote
 - `evidence add` links a local license document hash to a `license_instance`.
 - `policy` warns when BYO fonts have no linked license instance or no evidence.
 - `policy --format sarif` / `policy --format junit` provides code-scanning and test-report outputs.
+- `policy --preset strict|startup|enterprise` applies opinionated policy profiles.
 
 ## Documentation
 - V1 feature cut: `docs/specs/v1-feature-set.md`
