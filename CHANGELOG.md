@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.0-rc.7 - 2026-02-22
+- Added new `prune` command for manifest-only cleanup of stale font entries.
+- `prune` defaults to dry-run and supports `--apply`, `--rule`, and `--max-removals`.
+- Default prune rule removes fonts only when both conditions are true: no discovered font file and no usage matches.
+- Applying prune now removes orphaned linked license instances that are no longer referenced by remaining fonts.
+- Added new event types: `manifest.font_pruned`, `manifest.license_instance_pruned`, and `prune.completed`.
+- Added CLI integration tests for prune dry-run and apply flows.
+- Updated README and specs to document prune workflow.
+
 ## 0.1.0-rc.6 - 2026-02-21
 - Focused `scan --discover` on font-relevant results by restricting discovered license files to font-adjacent paths.
 - Added default ignore rules for dependency directories (`vendor`, `bower_components`) in scanner traversal.

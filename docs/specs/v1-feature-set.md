@@ -19,6 +19,10 @@ Goal: developer workflow for lawful, auditable font usage in projects.
   - dependency directories (`node_modules`, `vendor`) ignored by default
   - deterministic file fingerprint (`document_hash`) for discovered license files
   - domain scan only after domain verification (interface prepared)
+- `setzkasten prune`
+  - manifest-only cleanup (dry-run by default)
+  - default rule: remove fonts with no discovered file and no usage match
+  - removes orphaned linked license instances when applying
 - `setzkasten evidence add`
   - attach/update evidence for an existing `license_instance` from a local file
   - store hash + metadata in manifest (not file contents)
