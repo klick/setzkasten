@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   EVENT_LOG_RELATIVE_PATH,
   MANIFEST_FILENAME,
+  MANIFEST_VERSION,
   findUp,
   parseListFlag,
   sha256Hex,
@@ -42,7 +43,7 @@ Commands:
   evidence  Attach/update license evidence from local files
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
-  migrate   Generate migration stub plan
+  migrate   Plan/apply manifest migration with backup safety
 
 Common options:
   --manifest <path>   Explicit path to ${MANIFEST_FILENAME}
@@ -1430,37 +1431,133 @@ async function handleQuote(cwd, flags) {
 }
 
 async function handleMigrate(cwd, flags) {
-  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
-  const { manifest, projectRoot } = await loadManifest({
-    cwd,
-    manifestPath,
-  });
+  const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const resolvedManifestPath = providedManifestPath ?? findUp(MANIFEST_FILENAME, cwd);
+  if (!resolvedManifestPath) {
+    throw new Error(
+      `${MANIFEST_FILENAME} was not found in current or parent directories. Run 'setzkasten init' first.`,
+    );
+  }
 
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(resolvedManifestPath, "utf8"));
+  } catch {
+    throw new Error(`Could not read manifest from ${resolvedManifestPath}.`);
+  }
+
+  const projectRoot = path.dirname(resolvedManifestPath);
+
+  const targetVersion = getStringFlag(flags, "to-version") ?? MANIFEST_VERSION;
+  const apply = getBooleanFlag(flags, "apply");
   const currentVersion =
     typeof manifest.manifest_version === "string" ? manifest.manifest_version : "unknown";
 
+  if (targetVersion !== MANIFEST_VERSION) {
+    throw new Error(
+      `Unsupported target version '${targetVersion}'. Supported target: ${MANIFEST_VERSION}.`,
+    );
+  }
+
+  const nextManifest = JSON.parse(JSON.stringify(manifest));
+  const actions = [];
+
+  if (nextManifest.manifest_version !== targetVersion) {
+    nextManifest.manifest_version = targetVersion;
+    actions.push({
+      id: "set_manifest_version",
+      from: currentVersion,
+      to: targetVersion,
+    });
+  }
+
+  if (!Array.isArray(nextManifest.fonts)) {
+    nextManifest.fonts = [];
+    actions.push({
+      id: "initialize_fonts_array",
+    });
+  }
+
+  if (!Array.isArray(nextManifest.license_instances)) {
+    nextManifest.license_instances = [];
+    actions.push({
+      id: "initialize_license_instances_array",
+    });
+  }
+
+  if (!Array.isArray(nextManifest.licensees)) {
+    nextManifest.licensees = [];
+    actions.push({
+      id: "initialize_licensees_array",
+    });
+  }
+
+  if (!isObject(nextManifest.project)) {
+    nextManifest.project = {
+      project_id: slugifyId(path.basename(projectRoot), "project"),
+      name: path.basename(projectRoot),
+    };
+    actions.push({
+      id: "initialize_project_object",
+    });
+  }
+
   const migrationPlan = {
-    mode: "stub",
+    dry_run: !apply,
     from_manifest_version: currentVersion,
-    to_manifest_version: "1.0.0",
-    actions: [
-      "Inspect schema differences",
-      "Draft migration transformations",
-      "Run dry-run migration validation",
-    ],
+    to_manifest_version: targetVersion,
+    actions,
+    no_op: actions.length === 0,
   };
+
+  if (!apply) {
+    const projectId = isObject(manifest.project) && asString(manifest.project.project_id)
+      ? manifest.project.project_id
+      : slugifyId(path.basename(projectRoot), "project");
+    await appendProjectEvent({
+      projectRoot,
+      projectId,
+      eventType: "migration.planned",
+      payload: migrationPlan,
+    });
+
+    printJson({
+      ok: true,
+      command: "migrate",
+      migration: migrationPlan,
+    });
+    return 0;
+  }
+
+  let backupPath = null;
+  if (actions.length > 0) {
+    backupPath = `${resolvedManifestPath}.backup-${Date.now()}.json`;
+    await writeFile(backupPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await saveManifest(resolvedManifestPath, nextManifest);
+  }
 
   await appendProjectEvent({
     projectRoot,
-    projectId: getManifestProjectId(manifest),
-    eventType: "migration.planned",
-    payload: migrationPlan,
+    projectId:
+      (isObject(nextManifest.project) && asString(nextManifest.project.project_id)) ||
+      (isObject(manifest.project) && asString(manifest.project.project_id)) ||
+      slugifyId(path.basename(projectRoot), "project"),
+    eventType: "migration.applied",
+    payload: {
+      ...migrationPlan,
+      backup_path: backupPath,
+    },
   });
 
   printJson({
     ok: true,
     command: "migrate",
-    migration: migrationPlan,
+    migration: {
+      ...migrationPlan,
+      dry_run: false,
+      applied: true,
+      backup_path: backupPath,
+    },
   });
 
   return 0;

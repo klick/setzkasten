@@ -445,6 +445,46 @@ test("evidence add hashes local license file and attaches it to a license instan
   rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("migrate dry-run reports no-op when manifest is current", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-migrate-dry-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Migrate Dry Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const migrateResult = runCli(scriptPath, ["migrate"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(migrateResult.status, 0);
+  const parsed = JSON.parse(migrateResult.stdout);
+  assert.equal(parsed.command, "migrate");
+  assert.equal(parsed.migration.dry_run, true);
+  assert.equal(parsed.migration.no_op, true);
+});
+
+test("migrate --apply upgrades manifest version and writes backup", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-migrate-apply-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Migrate Apply Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.manifest_version = "0.9.0";
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const migrateResult = runCli(scriptPath, ["migrate", "--apply"], { cwd: tempDir });
+  assert.equal(migrateResult.status, 0);
+
+  const parsed = JSON.parse(migrateResult.stdout);
+  assert.equal(parsed.migration.applied, true);
+  assert.equal(typeof parsed.migration.backup_path, "string");
+  assert.equal(parsed.migration.backup_path.length > 0, true);
+
+  const migratedManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  assert.equal(migratedManifest.manifest_version, "1.0.0");
+  assert.equal(parsed.migration.backup_path.endsWith(".json"), true);
+
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("runs through symlinked entrypoint (npm bin-style execution)", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-link-"));
   const linkedScriptPath = path.join(tempDir, "setzkasten");

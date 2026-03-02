@@ -13,7 +13,7 @@ CLI-first tool for font license governance, audit logging, and deterministic pol
 - Evaluates policy decisions (`allow`, `warn`, `escalate`)
 - Emits `json`, `sarif`, or `junit` output for `scan` and `policy`
 - Generates deterministic quote output
-- Provides a migration stub command
+- Provides dry-run/apply migration with manifest backup support
 
 ## Install
 ```bash
@@ -32,6 +32,7 @@ setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
+setzkasten migrate --apply
 setzkasten migrate
 ```
 
