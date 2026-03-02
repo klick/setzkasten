@@ -42,6 +42,7 @@ Commands:
   doctor    Diagnose manifest and evidence readiness for CI usage
   evidence  Attach/update license evidence from local files
   exception Manage policy exceptions (add, list, remove)
+  report    Generate project governance report (json or markdown)
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
   migrate   Plan/apply manifest migration with backup safety
@@ -66,6 +67,9 @@ Exception options:
     [--reason <text>] [--expires-at <iso-date-time>] [--exception-id <id>]
   setzkasten exception list
   setzkasten exception remove --exception-id <id>
+Report options:
+  --format <json|markdown>          Report format (default: markdown)
+  --output <path>                   Write report output to file
 Evidence options:
   setzkasten evidence add --license-id <id> --file <path>
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
@@ -84,6 +88,7 @@ Examples:
   setzkasten evidence verify --strict
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
   setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
+  setzkasten report --format markdown --output compliance-report.md
   setzkasten policy presets
   setzkasten policy --fail-on escalate
 `;
@@ -462,6 +467,121 @@ function scanToFindings(scanResult) {
   }
 
   return findings;
+}
+
+function summarizeEvidenceHealth(manifest) {
+  const licenseInstances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+  const summary = {
+    total_instances: licenseInstances.length,
+    with_evidence: 0,
+    without_evidence: 0,
+    evidence_items_count: 0,
+  };
+
+  for (const instance of licenseInstances) {
+    if (!isObject(instance)) {
+      continue;
+    }
+    const evidence = Array.isArray(instance.evidence) ? instance.evidence : [];
+    summary.evidence_items_count += evidence.length;
+    if (evidence.length > 0) {
+      summary.with_evidence += 1;
+    } else {
+      summary.without_evidence += 1;
+    }
+  }
+
+  return summary;
+}
+
+function summarizeFonts(manifest) {
+  const fonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+  const bySource = {};
+
+  for (const font of fonts) {
+    const source = isObject(font?.source) ? asString(font.source.type) ?? "unknown" : "unknown";
+    bySource[source] = (bySource[source] ?? 0) + 1;
+  }
+
+  return {
+    total_fonts: fonts.length,
+    by_source: bySource,
+  };
+}
+
+async function summarizeEvents(projectRoot) {
+  const eventLogPath = path.join(projectRoot, EVENT_LOG_RELATIVE_PATH);
+  let raw = "";
+  try {
+    raw = await readFile(eventLogPath, "utf8");
+  } catch {
+    return {
+      event_log_path: eventLogPath,
+      present: false,
+      total_events: 0,
+      last_event_type: null,
+      last_event_ts: null,
+    };
+  }
+
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const parsed = lines
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry) => isObject(entry));
+  const last = parsed.length > 0 ? parsed[parsed.length - 1] : null;
+
+  return {
+    event_log_path: eventLogPath,
+    present: true,
+    total_events: parsed.length,
+    last_event_type: asString(last?.event_type),
+    last_event_ts: asString(last?.ts),
+  };
+}
+
+function renderReportMarkdown(report) {
+  const lines = [];
+  lines.push(`# Setzkasten Report`);
+  lines.push("");
+  lines.push(`- Generated at: ${report.generated_at}`);
+  lines.push(`- Project: ${report.project.name} (\`${report.project.project_id}\`)`);
+  lines.push(`- Manifest version: ${report.manifest_version}`);
+  lines.push("");
+  lines.push(`## Policy`);
+  lines.push(`- Decision: **${report.policy.decision}**`);
+  lines.push(`- Reasons: ${report.policy.reasons_count}`);
+  lines.push(`- Suppressed reasons: ${report.policy.suppressed_reasons_count}`);
+  lines.push("");
+  lines.push(`## Quote`);
+  lines.push(`- Line items: ${report.quote.line_items_count}`);
+  lines.push(`- Totals: \`${JSON.stringify(report.quote.totals)}\``);
+  lines.push("");
+  lines.push(`## Fonts`);
+  lines.push(`- Total: ${report.fonts.total_fonts}`);
+  lines.push(`- By source: \`${JSON.stringify(report.fonts.by_source)}\``);
+  lines.push("");
+  lines.push(`## Evidence`);
+  lines.push(`- License instances: ${report.evidence.total_instances}`);
+  lines.push(`- With evidence: ${report.evidence.with_evidence}`);
+  lines.push(`- Without evidence: ${report.evidence.without_evidence}`);
+  lines.push(`- Evidence items: ${report.evidence.evidence_items_count}`);
+  lines.push("");
+  lines.push(`## Events`);
+  lines.push(`- Present: ${report.events.present}`);
+  lines.push(`- Total events: ${report.events.total_events}`);
+  lines.push(`- Last event: ${report.events.last_event_type ?? "n/a"} (${report.events.last_event_ts ?? "n/a"})`);
+  lines.push("");
+
+  return lines.join("\n");
 }
 
 async function handleInit(cwd, flags) {
@@ -1621,6 +1741,102 @@ async function handleQuote(cwd, flags) {
   return 0;
 }
 
+async function handleReport(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const format = (getStringFlag(flags, "format") ?? "markdown").toLowerCase();
+  if (format !== "json" && format !== "markdown") {
+    throw new Error("--format must be one of: json, markdown");
+  }
+
+  const policy = evaluatePolicy(manifest);
+  const quote = generateQuote(manifest);
+  const events = await summarizeEvents(projectRoot);
+  const exceptions = readPolicyExceptions(manifest);
+
+  const report = {
+    generated_at: new Date().toISOString(),
+    manifest_version: asString(manifest.manifest_version) ?? "unknown",
+    project: {
+      project_id: asString(manifest?.project?.project_id) ?? "unknown_project",
+      name: asString(manifest?.project?.name) ?? "Unknown Project",
+      repo: asString(manifest?.project?.repo),
+      domains: Array.isArray(manifest?.project?.domains) ? manifest.project.domains : [],
+    },
+    policy: {
+      decision: policy.decision,
+      reasons_count: Array.isArray(policy.reasons) ? policy.reasons.length : 0,
+      suppressed_reasons_count: Array.isArray(policy.suppressed_reasons) ? policy.suppressed_reasons.length : 0,
+      evidence_required: Array.isArray(policy.evidence_required) ? policy.evidence_required : [],
+      active_exception_ids: Array.isArray(policy.active_exception_ids) ? policy.active_exception_ids : [],
+    },
+    quote: {
+      totals: quote.totals,
+      line_items_count: Array.isArray(quote.line_items) ? quote.line_items.length : 0,
+      skipped_count: Array.isArray(quote.skipped) ? quote.skipped.length : 0,
+      deterministic_hash: quote.deterministic_hash,
+    },
+    fonts: summarizeFonts(manifest),
+    evidence: summarizeEvidenceHealth(manifest),
+    exceptions: {
+      total_exceptions: exceptions.length,
+      active_exceptions: exceptions.filter((entry) => !isPolicyExceptionExpired(entry)).length,
+      expired_exceptions: exceptions.filter((entry) => isPolicyExceptionExpired(entry)).length,
+    },
+    events,
+  };
+
+  const content = format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${renderReportMarkdown(report)}\n`;
+  const output = getStringFlag(flags, "output");
+
+  if (output) {
+    const outputPath = path.resolve(cwd, output);
+    await writeFile(outputPath, content, "utf8");
+
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(manifest),
+      eventType: "report.generated",
+      payload: {
+        format,
+        output_path: outputPath,
+      },
+    });
+
+    printJson({
+      ok: true,
+      command: "report",
+      format,
+      output_path: outputPath,
+      bytes: Buffer.byteLength(content, "utf8"),
+    });
+
+    return 0;
+  }
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(manifest),
+    eventType: "report.generated",
+    payload: {
+      format,
+      output_path: null,
+    },
+  });
+
+  if (format === "json") {
+    printJson(report);
+  } else {
+    printText(content.trimEnd());
+  }
+
+  return 0;
+}
+
 async function handleMigrate(cwd, flags) {
   const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
   const resolvedManifestPath = providedManifestPath ?? findUp(MANIFEST_FILENAME, cwd);
@@ -1781,6 +1997,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleException(cwd, parsed.flags, parsed.positionals);
     case "policy":
       return handlePolicy(cwd, parsed.flags, parsed.positionals);
+    case "report":
+      return handleReport(cwd, parsed.flags);
     case "quote":
       return handleQuote(cwd, parsed.flags);
     case "migrate":

@@ -26,6 +26,7 @@ setzkasten evidence suggest --path . --apply
 setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
+setzkasten report --format markdown --output compliance-report.md
 setzkasten migrate --apply
 setzkasten policy
 setzkasten quote
@@ -43,6 +44,7 @@ node packages/cli/src/index.js evidence suggest --path . --apply
 node packages/cli/src/index.js evidence verify --strict
 node packages/cli/src/index.js evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 node packages/cli/src/index.js exception add --code BYO_NO_EVIDENCE --font-id inter --reason "Temporary waiver"
+node packages/cli/src/index.js report --format markdown --output compliance-report.md
 node packages/cli/src/index.js migrate --apply
 node packages/cli/src/index.js policy
 node packages/cli/src/index.js quote
@@ -59,6 +61,7 @@ node packages/cli/src/index.js quote
 - `evidence suggest`
 - `evidence verify`
 - `exception add|list|remove`
+- `report`
 - `policy`
 - `quote`
 - `migrate` (stub)

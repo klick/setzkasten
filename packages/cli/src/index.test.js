@@ -581,6 +581,45 @@ test("migrate --apply upgrades manifest version and writes backup", () => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("report supports json output", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-report-json-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Report JSON Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const reportResult = runCli(scriptPath, ["report", "--format", "json"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(reportResult.status, 0);
+  const parsed = JSON.parse(reportResult.stdout);
+  assert.equal(parsed.project.name, "Report JSON Demo");
+  assert.equal(typeof parsed.policy.decision, "string");
+  assert.equal(typeof parsed.events.total_events, "number");
+});
+
+test("report writes markdown output file", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-report-md-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Report Markdown Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const outputPath = "compliance-report.md";
+  const reportResult = runCli(
+    scriptPath,
+    ["report", "--format", "markdown", "--output", outputPath],
+    { cwd: tempDir },
+  );
+  assert.equal(reportResult.status, 0);
+
+  const result = JSON.parse(reportResult.stdout);
+  assert.equal(result.command, "report");
+  assert.equal(result.format, "markdown");
+
+  const markdown = readFileSync(path.join(tempDir, outputPath), "utf8");
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.match(markdown, /# Setzkasten Report/);
+  assert.match(markdown, /## Policy/);
+});
+
 test("runs through symlinked entrypoint (npm bin-style execution)", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-link-"));
   const linkedScriptPath = path.join(tempDir, "setzkasten");
