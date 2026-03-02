@@ -167,6 +167,10 @@ function validateEvidence(errors, pathName, value) {
   validateString(errors, `${pathName}.document_hash`, value.document_hash, {
     pattern: SHA256_PATTERN,
   });
+
+  if (value.document_path !== undefined) {
+    validateString(errors, `${pathName}.document_path`, value.document_path, { minLength: 1 });
+  }
 }
 
 function validateLicenseOffering(errors, pathName, value) {
@@ -678,6 +682,11 @@ export function upsertLicenseEvidence(manifest, input) {
   const normalizedDocumentName = normalizeOptionalString(input?.documentName);
   if (normalizedDocumentName) {
     nextEvidence.document_name = normalizedDocumentName;
+  }
+
+  const normalizedDocumentPath = normalizeOptionalString(input?.documentPath);
+  if (normalizedDocumentPath) {
+    nextEvidence.document_path = normalizedDocumentPath;
   }
 
   let action = "added";

@@ -63,6 +63,8 @@ Evidence options:
     [--type <type>] [--evidence-id <id>] [--document-name <name>]
     [--document-url <uri>] [--reference <id>] [--issuer <name>]
     [--purchased-at <iso-date-time>] [--notes <text>]
+  setzkasten evidence suggest [--path <dir>] [--apply]
+  setzkasten evidence verify [--strict]
 
 Examples:
   setzkasten init --name "Acme Project"
@@ -70,6 +72,8 @@ Examples:
   setzkasten import --path . --apply
   setzkasten add --font-id inter --family "Inter" --source oss
   setzkasten scan --path . --discover
+  setzkasten evidence suggest --path .
+  setzkasten evidence verify --strict
   setzkasten evidence add --license-id lic_web_001 --file ./licenses/OFL.txt
   setzkasten policy --fail-on escalate
 `;
@@ -1045,14 +1049,316 @@ async function handleEvidenceAdd(cwd, flags) {
   return 0;
 }
 
+function toComparableSet(values) {
+  return new Set(
+    values
+      .filter((entry) => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
+
+function buildEvidenceSuggestions(manifest, scanResult) {
+  const suggestions = [];
+  const instances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+  const discoveredLicenseFiles = Array.isArray(scanResult.discovered_license_files)
+    ? scanResult.discovered_license_files
+    : [];
+
+  for (const instance of instances) {
+    if (!isObject(instance)) {
+      continue;
+    }
+
+    const licenseId = asString(instance.license_id);
+    if (!licenseId) {
+      continue;
+    }
+
+    const fontRefs = Array.isArray(instance.font_refs) ? instance.font_refs : [];
+    const fontIds = fontRefs
+      .map((ref) => (isObject(ref) ? asString(ref.font_id) : null))
+      .filter((entry) => typeof entry === "string");
+    const fontIdSet = toComparableSet(fontIds);
+
+    if (fontIdSet.size === 0) {
+      continue;
+    }
+
+    const evidence = Array.isArray(instance.evidence) ? instance.evidence : [];
+    if (evidence.length > 0) {
+      continue;
+    }
+
+    const candidates = discoveredLicenseFiles
+      .map((entry) => {
+        const matchedFontIds = Array.isArray(entry.matched_font_ids) ? entry.matched_font_ids : [];
+        const overlap = matchedFontIds.filter((fontId) => fontIdSet.has(fontId)).length;
+        if (overlap === 0) {
+          return null;
+        }
+
+        return {
+          entry,
+          overlap,
+          confidence: Math.min(0.99, Number((0.45 + overlap / Math.max(1, fontIdSet.size)).toFixed(2))),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (b.overlap !== a.overlap) {
+          return b.overlap - a.overlap;
+        }
+        return String(a.entry.path).localeCompare(String(b.entry.path));
+      });
+
+    if (candidates.length === 0) {
+      continue;
+    }
+
+    const selected = candidates[0];
+    suggestions.push({
+      license_id: licenseId,
+      evidence_type: "license_document",
+      path: selected.entry.path,
+      document_hash: selected.entry.document_hash,
+      detected_license: asString(selected.entry.detected_license),
+      matched_font_ids: Array.isArray(selected.entry.matched_font_ids) ? selected.entry.matched_font_ids : [],
+      confidence: selected.confidence,
+    });
+  }
+
+  return suggestions.sort((a, b) => a.license_id.localeCompare(b.license_id));
+}
+
+async function handleEvidenceSuggest(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const scanRoot = path.resolve(cwd, getStringFlag(flags, "path") ?? projectRoot);
+  const apply = getBooleanFlag(flags, "apply");
+
+  const scanResult = await scanProject({
+    rootPath: scanRoot,
+    manifest,
+    maxMatchedPathsPerFont: 20,
+    maxDiscoveredFiles: 200,
+    maxDiscoveredLicenseFiles: 200,
+    discover: true,
+  });
+
+  const suggestions = buildEvidenceSuggestions(manifest, scanResult);
+
+  if (!apply) {
+    printJson({
+      ok: true,
+      command: "evidence",
+      action: "suggest",
+      dry_run: true,
+      root_path: scanResult.root_path,
+      suggestions_count: suggestions.length,
+      suggestions,
+    });
+    return 0;
+  }
+
+  let updatedManifest = manifest;
+  const applied = [];
+
+  for (const suggestion of suggestions) {
+    const upsertResult = upsertLicenseEvidence(updatedManifest, {
+      licenseId: suggestion.license_id,
+      type: suggestion.evidence_type,
+      documentHash: suggestion.document_hash,
+      documentName: path.basename(suggestion.path),
+      documentPath: suggestion.path,
+      notes: `Suggested by evidence suggest (confidence=${suggestion.confidence})`,
+    });
+    updatedManifest = upsertResult.manifest;
+    applied.push({
+      license_id: upsertResult.license_id,
+      evidence_id: upsertResult.evidence.evidence_id,
+      document_hash: upsertResult.evidence.document_hash,
+      path: suggestion.path,
+      confidence: suggestion.confidence,
+    });
+  }
+
+  await saveManifest(resolvedManifestPath, updatedManifest);
+
+  for (const item of applied) {
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(updatedManifest),
+      eventType: "manifest.license_ref_added",
+      payload: {
+        action: "suggested_add",
+        license_id: item.license_id,
+        evidence_id: item.evidence_id,
+        document_hash: item.document_hash,
+        file_path: item.path,
+        confidence: item.confidence,
+      },
+    });
+  }
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(updatedManifest),
+    eventType: "evidence.suggested",
+    payload: {
+      root_path: scanResult.root_path,
+      suggested_count: suggestions.length,
+      applied_count: applied.length,
+    },
+  });
+
+  printJson({
+    ok: true,
+    command: "evidence",
+    action: "suggest",
+    dry_run: false,
+    root_path: scanResult.root_path,
+    suggestions_count: suggestions.length,
+    applied_count: applied.length,
+    applied,
+    suggestions,
+  });
+
+  return 0;
+}
+
+async function handleEvidenceVerify(cwd, flags) {
+  const manifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const { manifest, projectRoot } = await loadManifest({
+    cwd,
+    manifestPath,
+  });
+
+  const strict = getBooleanFlag(flags, "strict");
+  const instances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+  const findings = [];
+
+  for (const instance of instances) {
+    if (!isObject(instance)) {
+      continue;
+    }
+
+    const licenseId = asString(instance.license_id) ?? "unknown_license";
+    const evidenceItems = Array.isArray(instance.evidence) ? instance.evidence : [];
+
+    for (const evidence of evidenceItems) {
+      if (!isObject(evidence)) {
+        continue;
+      }
+
+      const evidenceId = asString(evidence.evidence_id) ?? "unknown_evidence";
+      const documentHash = asString(evidence.document_hash);
+      const documentPath = asString(evidence.document_path);
+
+      if (!documentPath) {
+        findings.push({
+          license_id: licenseId,
+          evidence_id: evidenceId,
+          status: "missing_path",
+          message: "Evidence entry does not include document_path.",
+        });
+        continue;
+      }
+
+      const absolutePath = path.resolve(projectRoot, documentPath);
+      let fileBuffer;
+      try {
+        fileBuffer = await readFile(absolutePath);
+      } catch {
+        findings.push({
+          license_id: licenseId,
+          evidence_id: evidenceId,
+          status: "missing_file",
+          path: documentPath,
+          message: `Evidence file not found at ${documentPath}.`,
+        });
+        continue;
+      }
+
+      const hash = sha256Hex(fileBuffer);
+      if (!documentHash || hash.toLowerCase() !== documentHash.toLowerCase()) {
+        findings.push({
+          license_id: licenseId,
+          evidence_id: evidenceId,
+          status: "hash_mismatch",
+          path: documentPath,
+          expected_hash: documentHash,
+          actual_hash: hash,
+          message: "Evidence hash does not match current file contents.",
+        });
+        continue;
+      }
+
+      findings.push({
+        license_id: licenseId,
+        evidence_id: evidenceId,
+        status: "ok",
+        path: documentPath,
+        message: "Evidence file and hash are valid.",
+      });
+    }
+  }
+
+  const summary = {
+    ok_count: findings.filter((entry) => entry.status === "ok").length,
+    missing_path_count: findings.filter((entry) => entry.status === "missing_path").length,
+    missing_file_count: findings.filter((entry) => entry.status === "missing_file").length,
+    hash_mismatch_count: findings.filter((entry) => entry.status === "hash_mismatch").length,
+  };
+  const failureCount = summary.missing_path_count + summary.missing_file_count + summary.hash_mismatch_count;
+
+  await appendProjectEvent({
+    projectRoot,
+    projectId: getManifestProjectId(manifest),
+    eventType: "evidence.verified",
+    payload: {
+      strict,
+      summary,
+      checked_count: findings.length,
+    },
+  });
+
+  printJson({
+    ok: failureCount === 0,
+    command: "evidence",
+    action: "verify",
+    strict,
+    summary,
+    findings,
+  });
+
+  if (strict && failureCount > 0) {
+    return 2;
+  }
+
+  return 0;
+}
+
 async function handleEvidence(cwd, flags, positionals) {
   const action = positionals[0] ?? "add";
 
-  if (action !== "add") {
-    throw new Error(`Unknown evidence action '${action}'. Supported: add`);
+  if (action === "add") {
+    return handleEvidenceAdd(cwd, flags);
   }
 
-  return handleEvidenceAdd(cwd, flags);
+  if (action === "suggest") {
+    return handleEvidenceSuggest(cwd, flags);
+  }
+
+  if (action === "verify") {
+    return handleEvidenceVerify(cwd, flags);
+  }
+
+  throw new Error(`Unknown evidence action '${action}'. Supported: add, suggest, verify`);
 }
 
 async function handlePolicy(cwd, flags) {

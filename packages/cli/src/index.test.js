@@ -260,6 +260,117 @@ test("doctor strict passes when BYO license linkage and evidence are complete", 
   assert.equal(parsed.checks.some((entry) => entry.id === "byo.evidence_attached" && entry.status === "pass"), true);
 });
 
+test("evidence suggest proposes discovered license files for empty license instances", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-evidence-suggest-"));
+  mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
+  writeFileSync(path.join(tempDir, "assets", "fonts", "IBM-Plex-Sans-Regular.woff2"), "font-binary");
+  writeFileSync(
+    path.join(tempDir, "assets", "fonts", "OFL.txt"),
+    "SIL OPEN FONT LICENSE Version 1.1\nFont Family: IBM Plex Sans",
+    "utf8",
+  );
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Evidence Suggest Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addResult = runCli(
+    scriptPath,
+    [
+      "add",
+      "--font-id",
+      "ibm-plex-sans",
+      "--family",
+      "IBM Plex Sans",
+      "--source",
+      "byo",
+      "--license-instance-id",
+      "lic_plex_001",
+      "--active-license-instance-id",
+      "lic_plex_001",
+    ],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.license_instances.push({
+    kind: "instance",
+    license_id: "lic_plex_001",
+    licensee_id: manifest.licensees[0].licensee_id,
+    offering_ref: { offering_id: "off_plex", offering_version: "1.0.0" },
+    scope: { scope_type: "project", scope_id: manifest.project.project_id },
+    font_refs: [{ font_id: "ibm-plex-sans", family_name: "IBM Plex Sans" }],
+    activated_right_ids: ["media_web"],
+    status: "active",
+    evidence: [],
+    acquisition_source: "legacy",
+  });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const suggestResult = runCli(scriptPath, ["evidence", "suggest", "--path", "."], { cwd: tempDir });
+  assert.equal(suggestResult.status, 0);
+  const parsed = JSON.parse(suggestResult.stdout);
+  assert.equal(parsed.action, "suggest");
+  assert.equal(parsed.dry_run, true);
+  assert.equal(parsed.suggestions_count, 1);
+  assert.equal(parsed.suggestions[0].license_id, "lic_plex_001");
+  assert.match(parsed.suggestions[0].path, /OFL\.txt$/);
+
+  const applyResult = runCli(scriptPath, ["evidence", "suggest", "--path", ".", "--apply"], { cwd: tempDir });
+  assert.equal(applyResult.status, 0);
+  const applied = JSON.parse(applyResult.stdout);
+  assert.equal(applied.applied_count, 1);
+
+  const updatedManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const updatedInstance = updatedManifest.license_instances.find((entry) => entry.license_id === "lic_plex_001");
+  assert.ok(updatedInstance);
+  assert.equal(updatedInstance.evidence.length, 1);
+  assert.match(updatedInstance.evidence[0].document_path, /OFL\.txt$/);
+
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("evidence verify detects missing files in strict mode", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-evidence-verify-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Evidence Verify Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.license_instances.push({
+    kind: "instance",
+    license_id: "lic_verify_001",
+    licensee_id: manifest.licensees[0].licensee_id,
+    offering_ref: { offering_id: "off_verify", offering_version: "1.0.0" },
+    scope: { scope_type: "project", scope_id: manifest.project.project_id },
+    font_refs: [{ font_id: "ghost", family_name: "Ghost" }],
+    activated_right_ids: ["media_web"],
+    status: "active",
+    evidence: [
+      {
+        evidence_id: "ev_verify_001",
+        type: "invoice",
+        document_hash: "a".repeat(64),
+        document_path: "licenses/missing.pdf",
+      },
+    ],
+    acquisition_source: "legacy",
+  });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const verifyResult = runCli(scriptPath, ["evidence", "verify"], { cwd: tempDir });
+  assert.equal(verifyResult.status, 0);
+  const parsed = JSON.parse(verifyResult.stdout);
+  assert.equal(parsed.action, "verify");
+  assert.equal(parsed.summary.missing_file_count, 1);
+
+  const strictResult = runCli(scriptPath, ["evidence", "verify", "--strict"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(strictResult.status, 2);
+});
+
 test("evidence add hashes local license file and attaches it to a license instance", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-evidence-"));
   const licenseFilePath = path.join(tempDir, "licenses", "OFL.txt");

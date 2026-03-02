@@ -27,6 +27,8 @@ setzkasten import --path . --apply
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
 setzkasten doctor --strict
+setzkasten evidence suggest --path . --apply
+setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -42,11 +44,21 @@ setzkasten import --path . --apply
 
 1. Run `setzkasten scan --path . --discover` to list discovered fonts and font-adjacent license files.
 2. Review `result.discovered_license_files` in JSON output (`path`, `document_hash`, `detected_license`, `matched_font_ids`).
+3. Optional automatic suggestions:
+```bash
+setzkasten evidence suggest --path .
+setzkasten evidence suggest --path . --apply
+```
 3. Link the local license file to a license instance:
 ```bash
 setzkasten evidence add --license-id <license_id> --file <path-to-license-file>
 ```
-4. Run `setzkasten policy` to verify BYO evidence state.
+4. Verify evidence file paths and hash integrity:
+```bash
+setzkasten evidence verify
+setzkasten evidence verify --strict
+```
+5. Run `setzkasten policy` to verify BYO evidence state.
 
 Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.
 

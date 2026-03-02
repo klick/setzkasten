@@ -22,6 +22,8 @@ setzkasten import --path . --apply
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
 setzkasten doctor --strict
+setzkasten evidence suggest --path . --apply
+setzkasten evidence verify --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -35,6 +37,8 @@ node packages/cli/src/index.js import --path . --apply
 node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
 node packages/cli/src/index.js scan --discover
 node packages/cli/src/index.js doctor --strict
+node packages/cli/src/index.js evidence suggest --path . --apply
+node packages/cli/src/index.js evidence verify --strict
 node packages/cli/src/index.js evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 node packages/cli/src/index.js policy
 node packages/cli/src/index.js quote
@@ -48,6 +52,8 @@ node packages/cli/src/index.js quote
 - `import`
 - `doctor`
 - `evidence add`
+- `evidence suggest`
+- `evidence verify`
 - `policy`
 - `quote`
 - `migrate` (stub)

@@ -105,12 +105,14 @@ test("upsertLicenseEvidence attaches evidence to an existing license instance", 
     licenseId: "lic_plex_001",
     documentHash: "91c25c350d3cac39da2736d74f7ba37ef648f5237a4e330a240615bc8d8c4360",
     documentName: "OFL.txt",
+    documentPath: "licenses/OFL.txt",
     type: "other",
   });
 
   assert.equal(result.action, "added");
   assert.equal(result.license_id, "lic_plex_001");
   assert.equal(result.evidence.document_name, "OFL.txt");
+  assert.equal(result.evidence.document_path, "licenses/OFL.txt");
 
   const validationAfter = await validateManifestDocument(result.manifest);
   assert.equal(validationAfter.valid, true);
