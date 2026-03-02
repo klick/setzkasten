@@ -4,7 +4,14 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { MANIFEST_FILENAME, parseListFlag, sha256Hex, slugifyId } from "./lib/core.js";
+import {
+  EVENT_LOG_RELATIVE_PATH,
+  MANIFEST_FILENAME,
+  findUp,
+  parseListFlag,
+  sha256Hex,
+  slugifyId,
+} from "./lib/core.js";
 import { appendProjectEvent } from "./lib/events.js";
 import {
   addFontToManifest,
@@ -30,6 +37,7 @@ Commands:
   add       Add font entry to manifest
   remove    Remove font entry from manifest
   scan      Scan local repository usage and optionally discover font/license files
+  doctor    Diagnose manifest and evidence readiness for CI usage
   evidence  Attach/update license evidence from local files
   policy    Evaluate policy decision (allow|warn|escalate)
   quote     Generate deterministic quote from license schema data
@@ -168,6 +176,22 @@ function getListFlag(flags, key) {
   return parseListFlag(value);
 }
 
+function isObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function asString(value) {
+  return typeof value === "string" ? value : null;
+}
+
+function asStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry) => typeof entry === "string");
+}
+
 function requireStringFlag(flags, key) {
   const value = getStringFlag(flags, key);
   if (!value || value.trim().length === 0) {
@@ -193,6 +217,57 @@ function resolveManifestPathFromFlag(cwd, flags) {
 
 function printJson(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function summarizeChecks(checks) {
+  const counts = {
+    pass: 0,
+    warn: 0,
+    error: 0,
+    skip: 0,
+  };
+
+  for (const check of checks) {
+    const status = typeof check.status === "string" ? check.status : "skip";
+    if (status in counts) {
+      counts[status] += 1;
+    } else {
+      counts.skip += 1;
+    }
+  }
+
+  let overall = "pass";
+  if (counts.error > 0) {
+    overall = "error";
+  } else if (counts.warn > 0) {
+    overall = "warn";
+  }
+
+  return {
+    overall,
+    pass_count: counts.pass,
+    warn_count: counts.warn,
+    error_count: counts.error,
+    skipped_count: counts.skip,
+  };
+}
+
+function createDoctorCheck(input) {
+  const check = {
+    id: input.id,
+    status: input.status,
+    message: input.message,
+  };
+
+  if (input.fix) {
+    check.fix = input.fix;
+  }
+
+  if (input.details !== undefined) {
+    check.details = input.details;
+  }
+
+  return check;
 }
 
 async function handleInit(cwd, flags) {
@@ -390,6 +465,200 @@ async function handleScan(cwd, flags) {
   return 0;
 }
 
+async function handleDoctor(cwd, flags) {
+  const strict = getBooleanFlag(flags, "strict");
+  const providedManifestPath = resolveManifestPathFromFlag(cwd, flags);
+  const resolvedManifestPath = providedManifestPath ?? findUp(MANIFEST_FILENAME, cwd);
+  const checks = [];
+  let manifest = null;
+  let projectRoot = cwd;
+
+  if (!resolvedManifestPath) {
+    checks.push(
+      createDoctorCheck({
+        id: "manifest.present",
+        status: "error",
+        message: `${MANIFEST_FILENAME} was not found in current or parent directories.`,
+        fix: "Run 'setzkasten init --name \"<project>\"'.",
+      }),
+    );
+    checks.push(
+      createDoctorCheck({
+        id: "manifest.valid",
+        status: "skip",
+        message: "Manifest validation skipped because manifest file is missing.",
+      }),
+    );
+  } else {
+    checks.push(
+      createDoctorCheck({
+        id: "manifest.present",
+        status: "pass",
+        message: `Found manifest at ${resolvedManifestPath}.`,
+      }),
+    );
+
+    try {
+      const loaded = await loadManifest({
+        cwd,
+        manifestPath: resolvedManifestPath,
+      });
+      manifest = loaded.manifest;
+      projectRoot = loaded.projectRoot;
+      checks.push(
+        createDoctorCheck({
+          id: "manifest.valid",
+          status: "pass",
+          message: "Manifest validation passed.",
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      checks.push(
+        createDoctorCheck({
+          id: "manifest.valid",
+          status: "error",
+          message: `Manifest validation failed: ${message}`,
+          fix: "Run 'setzkasten migrate' or correct manifest fields to match schema.",
+        }),
+      );
+    }
+  }
+
+  const eventLogPath = path.join(projectRoot, EVENT_LOG_RELATIVE_PATH);
+  const eventLogExists = await exists(eventLogPath);
+
+  checks.push(
+    createDoctorCheck({
+      id: "events.log.present",
+      status: eventLogExists ? "pass" : "warn",
+      message: eventLogExists ? `Found event log at ${eventLogPath}.` : "Event log is missing.",
+      fix: eventLogExists ? undefined : "Run any mutating command (or 'setzkasten init') to create events log.",
+    }),
+  );
+
+  if (!manifest) {
+    checks.push(
+      createDoctorCheck({
+        id: "byo.license_linked",
+        status: "skip",
+        message: "BYO license linkage check skipped because manifest is unavailable.",
+      }),
+    );
+    checks.push(
+      createDoctorCheck({
+        id: "byo.evidence_attached",
+        status: "skip",
+        message: "BYO evidence check skipped because manifest is unavailable.",
+      }),
+    );
+  } else {
+    const fonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+    const licenseInstances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+    const instancesById = new Map();
+
+    for (const instance of licenseInstances) {
+      if (
+        isObject(instance) &&
+        typeof instance.license_id === "string" &&
+        instance.license_id.trim().length > 0
+      ) {
+        instancesById.set(instance.license_id, instance);
+      }
+    }
+
+    const byoFonts = fonts.filter(
+      (font) => isObject(font) && isObject(font.source) && asString(font.source.type) === "byo",
+    );
+
+    const missingLinkedInstance = [];
+    const missingEvidence = [];
+
+    for (const font of byoFonts) {
+      const fontId = asString(font.font_id) ?? "unknown_font";
+      const linkedIds = asStringArray(font.license_instance_ids);
+      const activeId = asString(font.active_license_instance_id);
+      const candidateId = activeId ?? linkedIds[0] ?? null;
+
+      if (!candidateId || !instancesById.has(candidateId)) {
+        missingLinkedInstance.push(fontId);
+        continue;
+      }
+
+      const licenseInstance = instancesById.get(candidateId);
+      const evidence = Array.isArray(licenseInstance?.evidence) ? licenseInstance.evidence : [];
+
+      if (evidence.length === 0) {
+        missingEvidence.push({
+          font_id: fontId,
+          license_id: candidateId,
+        });
+      }
+    }
+
+    checks.push(
+      createDoctorCheck({
+        id: "byo.license_linked",
+        status: missingLinkedInstance.length > 0 ? "warn" : "pass",
+        message:
+          missingLinkedInstance.length > 0
+            ? `${missingLinkedInstance.length} BYO font(s) are missing a linked license instance.`
+            : "All BYO fonts are linked to a license instance.",
+        details: missingLinkedInstance.length > 0 ? { font_ids: missingLinkedInstance } : undefined,
+        fix:
+          missingLinkedInstance.length > 0
+            ? "Use 'setzkasten add --license-instance-id <id> --active-license-instance-id <id>' or update manifest."
+            : undefined,
+      }),
+    );
+
+    checks.push(
+      createDoctorCheck({
+        id: "byo.evidence_attached",
+        status: missingEvidence.length > 0 ? "warn" : "pass",
+        message:
+          missingEvidence.length > 0
+            ? `${missingEvidence.length} BYO font(s) have no evidence attached.`
+            : "All linked BYO license instances have evidence attached.",
+        details: missingEvidence.length > 0 ? { missing_evidence: missingEvidence } : undefined,
+        fix:
+          missingEvidence.length > 0
+            ? "Use 'setzkasten evidence add --license-id <id> --file <path>'."
+            : undefined,
+      }),
+    );
+  }
+
+  const summary = summarizeChecks(checks);
+
+  if (manifest) {
+    await appendProjectEvent({
+      projectRoot,
+      projectId: getManifestProjectId(manifest),
+      eventType: "doctor.completed",
+      payload: {
+        strict,
+        summary,
+      },
+    });
+  }
+
+  printJson({
+    ok: summary.error_count === 0,
+    command: "doctor",
+    strict,
+    manifest_path: resolvedManifestPath ?? null,
+    summary,
+    checks,
+  });
+
+  if (strict) {
+    return summary.overall === "pass" ? 0 : 2;
+  }
+
+  return summary.error_count > 0 ? 2 : 0;
+}
+
 async function handleEvidenceAdd(cwd, flags) {
   const manifestPath = resolveManifestPathFromFlag(cwd, flags);
   const { manifest, manifestPath: resolvedManifestPath, projectRoot } = await loadManifest({
@@ -573,6 +842,8 @@ export async function runCli(argv = process.argv.slice(2), cwd = process.cwd()) 
       return handleRemove(cwd, parsed.flags);
     case "scan":
       return handleScan(cwd, parsed.flags);
+    case "doctor":
+      return handleDoctor(cwd, parsed.flags);
     case "evidence":
       return handleEvidence(cwd, parsed.flags, parsed.positionals);
     case "policy":

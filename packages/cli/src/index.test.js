@@ -60,6 +60,105 @@ test("scan --discover prints discovered font files", () => {
   );
 });
 
+test("doctor reports missing manifest and exits non-zero", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-doctor-missing-"));
+  const doctorResult = runCli(scriptPath, ["doctor"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(doctorResult.status, 2);
+  const parsed = JSON.parse(doctorResult.stdout);
+  assert.equal(parsed.command, "doctor");
+  assert.equal(parsed.summary.overall, "error");
+  assert.equal(parsed.checks.some((entry) => entry.id === "manifest.present" && entry.status === "error"), true);
+});
+
+test("doctor warns for missing BYO links/evidence and strict mode fails", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-doctor-warn-"));
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Doctor Warn Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addResult = runCli(
+    scriptPath,
+    ["add", "--font-id", "ghost", "--family", "Ghost", "--source", "byo"],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const doctorResult = runCli(scriptPath, ["doctor"], { cwd: tempDir });
+  assert.equal(doctorResult.status, 0);
+  const parsed = JSON.parse(doctorResult.stdout);
+  assert.equal(parsed.summary.overall, "warn");
+  assert.equal(parsed.checks.some((entry) => entry.id === "byo.license_linked" && entry.status === "warn"), true);
+
+  const strictResult = runCli(scriptPath, ["doctor", "--strict"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(strictResult.status, 2);
+  const strictParsed = JSON.parse(strictResult.stdout);
+  assert.equal(strictParsed.summary.overall, "warn");
+});
+
+test("doctor strict passes when BYO license linkage and evidence are complete", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-doctor-pass-"));
+  const initResult = runCli(scriptPath, ["init", "--name", "Doctor Pass Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const addResult = runCli(
+    scriptPath,
+    [
+      "add",
+      "--font-id",
+      "ibm-plex-sans",
+      "--family",
+      "IBM Plex Sans",
+      "--source",
+      "byo",
+      "--license-instance-id",
+      "lic_plex_001",
+      "--active-license-instance-id",
+      "lic_plex_001",
+    ],
+    { cwd: tempDir },
+  );
+  assert.equal(addResult.status, 0);
+
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.license_instances.push({
+    kind: "instance",
+    license_id: "lic_plex_001",
+    licensee_id: manifest.licensees[0].licensee_id,
+    offering_ref: {
+      offering_id: "off_plex_web",
+      offering_version: "1.0.0",
+    },
+    scope: {
+      scope_type: "project",
+      scope_id: manifest.project.project_id,
+    },
+    font_refs: [
+      {
+        font_id: "ibm-plex-sans",
+        family_name: "IBM Plex Sans",
+      },
+    ],
+    activated_right_ids: ["media_web"],
+    status: "active",
+    evidence: [{ evidence_id: "ev_plex_001", type: "invoice", document_hash: "a".repeat(64) }],
+    acquisition_source: "direct_foundry",
+  });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const doctorResult = runCli(scriptPath, ["doctor", "--strict"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(doctorResult.status, 0);
+  const parsed = JSON.parse(doctorResult.stdout);
+  assert.equal(parsed.summary.overall, "pass");
+  assert.equal(parsed.checks.some((entry) => entry.id === "byo.evidence_attached" && entry.status === "pass"), true);
+});
+
 test("evidence add hashes local license file and attaches it to a license instance", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-evidence-"));
   const licenseFilePath = path.join(tempDir, "licenses", "OFL.txt");

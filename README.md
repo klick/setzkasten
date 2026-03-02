@@ -20,6 +20,7 @@ npm install -g @setzkasten/cli
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
+setzkasten doctor --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -31,6 +32,7 @@ npm run build
 node packages/cli/src/index.js init
 node packages/cli/src/index.js add --font-id inter --family "Inter" --source oss
 node packages/cli/src/index.js scan --discover
+node packages/cli/src/index.js doctor --strict
 node packages/cli/src/index.js evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 node packages/cli/src/index.js policy
 node packages/cli/src/index.js quote
@@ -41,6 +43,7 @@ node packages/cli/src/index.js quote
 - `add`
 - `remove`
 - `scan`
+- `doctor`
 - `evidence add`
 - `policy`
 - `quote`

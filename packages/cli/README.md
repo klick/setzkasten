@@ -23,6 +23,7 @@ npm install -g @setzkasten/cli
 setzkasten init --name "My Project"
 setzkasten add --font-id inter --family "Inter" --source oss
 setzkasten scan --path . --discover
+setzkasten doctor --strict
 setzkasten evidence add --license-id lic_inter_001 --file ./licenses/OFL.txt
 setzkasten policy
 setzkasten quote
@@ -39,6 +40,14 @@ setzkasten evidence add --license-id <license_id> --file <path-to-license-file>
 4. Run `setzkasten policy` to verify BYO evidence state.
 
 Dependency directories such as `node_modules` and `vendor` are ignored during scans by default.
+
+## Doctor
+Run environment and governance diagnostics:
+
+```bash
+setzkasten doctor
+setzkasten doctor --strict
+```
 
 ## Data written locally
 - `LICENSE_MANIFEST.json`
