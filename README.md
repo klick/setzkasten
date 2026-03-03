@@ -3,6 +3,11 @@
 Setzkasten is a CLI-first tool for font license governance, auditability, and deterministic policy and quote checks.
 V1 focuses on reliable project records and offline-first workflows. There is no marketplace in V1.
 
+## Positioning
+- Agencies: Setzkasten provides a verifiable font-license trail across client projects, so delivery stays fast without legal cleanup later.
+- Product teams: Setzkasten turns font-license checks into CI policy, so teams catch license gaps in pull requests instead of during release panic.
+- Enterprise/compliance teams: Setzkasten provides deterministic evidence, policy decisions, and audit-ready history for font usage at scale.
+
 ## V1 Boundaries
 - Open-source fonts and BYO (bring your own fonts) only.
 - No hosting or distribution of proprietary font files.

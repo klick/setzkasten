@@ -1,7 +1,7 @@
 {
   "name": "@setzkasten/cli",
   "version": "0.5.0",
-  "description": "Setzkasten CLI for font license governance and audit trails.",
+  "description": "CI-first font license governance CLI for agencies, product teams, and enterprise compliance.",
   "private": false,
   "type": "module",
   "bin": {

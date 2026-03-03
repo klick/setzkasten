@@ -2,6 +2,11 @@
 
 CLI-first tool for font license governance, audit logging, and deterministic policy/quote checks.
 
+## Positioning
+- Agencies: keep client font-license trails verifiable without slowing delivery.
+- Product teams: move license checks into CI and catch gaps during pull requests.
+- Enterprise/compliance: get deterministic evidence and audit-ready usage history at scale.
+
 ## What it does (V1)
 - Initializes a project manifest (`LICENSE_MANIFEST.json`)
 - Writes an append-only event log (`.setzkasten/events.log`)

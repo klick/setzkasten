@@ -2,7 +2,7 @@
   "name": "setzkasten",
   "private": true,
   "version": "0.5.0",
-  "description": "CLI-first Font license governance tool (V1 scaffold).",
+  "description": "CI-first font license governance monorepo for deterministic policy checks and audit evidence.",
   "workspaces": [
     "packages/*",
     "apps/*",
