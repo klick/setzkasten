@@ -111,3 +111,37 @@ test("scanProject matches family names as tokens and ignores substring noise", a
   assert.equal(result.font_matches.inter.match_count, 1);
   assert.deepEqual(result.font_matches.inter.matched_paths, ["styles.css"]);
 });
+
+test("scanProject ignores bundler js/css LICENSE artifacts in discovery output", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-scanner-"));
+
+  mkdirSync(path.join(tempDir, "web", "cpresources", "41d0a100"), { recursive: true });
+  writeFileSync(path.join(tempDir, "web", "cpresources", "41d0a100", "CraftIcons.woff2"), "font-binary");
+  writeFileSync(
+    path.join(tempDir, "web", "cpresources", "41d0a100", "OFL.txt"),
+    "SIL OPEN FONT LICENSE Version 1.1\nFont Family: Craft Icons",
+    "utf8",
+  );
+  writeFileSync(
+    path.join(tempDir, "web", "cpresources", "41d0a100", "cp.js.LICENSE.txt"),
+    "Bundled JavaScript third-party license summary",
+    "utf8",
+  );
+
+  const result = await scanProject({
+    rootPath: tempDir,
+    manifest: baseManifest(),
+    discover: true,
+  });
+
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(
+    result.discovered_license_files.some((entry) => entry.path.endsWith("cp.js.LICENSE.txt")),
+    false,
+  );
+  assert.equal(
+    result.discovered_license_files.some((entry) => entry.path.endsWith("OFL.txt")),
+    true,
+  );
+});

@@ -60,6 +60,36 @@ test("scan --discover prints discovered font files", () => {
   );
 });
 
+test("scan --discover excludes bundler LICENSE artifacts like cp.js.LICENSE.txt", () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-discover-noise-"));
+  mkdirSync(path.join(tempDir, "web", "cpresources", "41d0a100"), { recursive: true });
+  writeFileSync(path.join(tempDir, "web", "cpresources", "41d0a100", "CraftIcons.woff2"), "font-binary");
+  writeFileSync(
+    path.join(tempDir, "web", "cpresources", "41d0a100", "OFL.txt"),
+    "SIL OPEN FONT LICENSE Version 1.1\nFont Family: Craft Icons",
+    "utf8",
+  );
+  writeFileSync(
+    path.join(tempDir, "web", "cpresources", "41d0a100", "cp.js.LICENSE.txt"),
+    "Bundled JavaScript third-party license summary",
+    "utf8",
+  );
+
+  const initResult = runCli(scriptPath, ["init", "--name", "Noise Filter Demo"], { cwd: tempDir });
+  assert.equal(initResult.status, 0);
+
+  const scanResult = runCli(scriptPath, ["scan", "--path", ".", "--discover"], { cwd: tempDir });
+  rmSync(tempDir, { recursive: true, force: true });
+
+  assert.equal(scanResult.status, 0);
+  const parsed = JSON.parse(scanResult.stdout);
+  assert.equal(
+    parsed.result.discovered_license_files.some((entry) => entry.path.endsWith("cp.js.LICENSE.txt")),
+    false,
+  );
+  assert.equal(parsed.result.discovered_license_files.some((entry) => entry.path.endsWith("OFL.txt")), true);
+});
+
 test("scan supports --format sarif", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "setzkasten-cli-scan-sarif-"));
   mkdirSync(path.join(tempDir, "assets", "fonts"), { recursive: true });
@@ -586,13 +616,70 @@ test("report supports json output", () => {
   const initResult = runCli(scriptPath, ["init", "--name", "Report JSON Demo"], { cwd: tempDir });
   assert.equal(initResult.status, 0);
 
+  const manifestPath = path.join(tempDir, "LICENSE_MANIFEST.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.fonts = [
+    {
+      font_id: "inter",
+      family_name: "Inter",
+      source: { type: "byo" },
+      license_instance_ids: [],
+    },
+    {
+      font_id: "plex",
+      family_name: "IBM Plex Sans",
+      source: { type: "byo" },
+      license_instance_ids: ["lic_plex_001"],
+      active_license_instance_id: "lic_plex_001",
+    },
+  ];
+  manifest.license_instances = [
+    {
+      kind: "instance",
+      license_id: "lic_plex_001",
+      licensee_id: manifest.licensees[0].licensee_id,
+      offering_ref: {
+        offering_id: "off_plex_web",
+        offering_version: "1.0.0",
+      },
+      scope: {
+        scope_type: "project",
+        scope_id: manifest.project.project_id,
+      },
+      font_refs: [
+        {
+          font_id: "plex",
+          family_name: "IBM Plex Sans",
+        },
+      ],
+      activated_right_ids: ["media_web"],
+      status: "active",
+      evidence: [],
+      acquisition_source: "direct_foundry",
+    },
+  ];
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
   const reportResult = runCli(scriptPath, ["report", "--format", "json"], { cwd: tempDir });
   rmSync(tempDir, { recursive: true, force: true });
 
   assert.equal(reportResult.status, 0);
   const parsed = JSON.parse(reportResult.stdout);
   assert.equal(parsed.project.name, "Report JSON Demo");
-  assert.equal(typeof parsed.policy.decision, "string");
+  assert.equal(parsed.policy.decision, "warn");
+  assert.equal(parsed.policy.warn_count >= 2, true);
+  assert.equal(parsed.policy.escalate_count, 0);
+  assert.equal(parsed.policy.reasons_by_code_top.some((entry) => entry.code === "BYO_NO_LICENSE_INSTANCE"), true);
+  assert.equal(parsed.policy.reasons_by_code_top.some((entry) => entry.code === "BYO_NO_EVIDENCE"), true);
+  assert.equal(parsed.ci.status, "warning");
+  assert.equal(parsed.ci.release_blocked, false);
+  assert.equal(parsed.actions.fonts_missing_license_instance_count, 1);
+  assert.equal(parsed.actions.fonts_missing_evidence_count, 1);
+  assert.equal(parsed.actions.license_instances_without_evidence_count, 1);
+  assert.equal(parsed.coverage.byo_fonts_total, 2);
+  assert.equal(parsed.coverage.byo_fonts_with_linked_license_instance, 1);
+  assert.equal(parsed.coverage.byo_fonts_with_linked_evidence, 0);
+  assert.equal(parsed.coverage.license_instances_with_evidence, 0);
   assert.equal(typeof parsed.events.total_events, "number");
 });
 
@@ -618,6 +705,9 @@ test("report writes markdown output file", () => {
 
   assert.match(markdown, /# Setzkasten Report/);
   assert.match(markdown, /## Policy/);
+  assert.match(markdown, /## CI Readiness/);
+  assert.match(markdown, /## Coverage/);
+  assert.match(markdown, /## Action Items/);
 });
 
 test("sync export writes default snapshot file", () => {

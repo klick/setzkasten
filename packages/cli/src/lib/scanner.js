@@ -35,6 +35,7 @@ const TEXT_FILE_EXTENSIONS = new Set([
 const FONT_FILE_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf", ".otc"]);
 const LICENSE_FILE_EXTENSIONS = new Set(["", ".txt", ".md", ".pdf", ".rtf", ".html", ".htm"]);
 const LICENSE_FILE_NAME_PATTERN = /(license|licence|eula|ofl|fontlog|copying|copyright)/i;
+const BUNDLER_LICENSE_ARTIFACT_PATTERN = /\.(js|css)\.license\.txt$/i;
 const FONT_PATH_SEGMENT_PATTERN = /(^|[\\/])(fonts?|typefaces?)([\\/]|$)/i;
 const FONT_LICENSE_ANCESTOR_DEPTH = 4;
 
@@ -86,6 +87,10 @@ function shouldDiscoverLicenseFile(filePath) {
   const fileName = path.basename(filePath).toLowerCase();
 
   if (!LICENSE_FILE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  if (BUNDLER_LICENSE_ARTIFACT_PATTERN.test(fileName)) {
     return false;
   }
 

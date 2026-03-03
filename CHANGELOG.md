@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.1 - 2026-03-03
+- Enhanced `report` output (JSON + Markdown) with CI readiness, coverage KPIs, top risk-code breakdown, and actionable remediation lists.
+- Improved discovery noise filtering by excluding bundler artifacts like `*.js.LICENSE.txt` and `*.css.LICENSE.txt` from discovered license files.
+- Added regression tests for bundler-artifact filtering and expanded report assertions.
+
 ## 0.5.0 - 2026-03-02
 - Added `doctor` command for manifest/event/evidence diagnostics with strict mode.
 - Added `import` command for dry-run/apply bootstrap of manifest fonts from discovered files.

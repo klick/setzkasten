@@ -499,6 +499,211 @@ function summarizeEvidenceHealth(manifest) {
   return summary;
 }
 
+function toPercent(numerator, denominator) {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return null;
+  }
+
+  return Number(((numerator / denominator) * 100).toFixed(1));
+}
+
+function formatPercent(value) {
+  return typeof value === "number" ? `${value.toFixed(1)}%` : "n/a";
+}
+
+function summarizePolicyBreakdown(policy) {
+  const reasons = Array.isArray(policy?.reasons) ? policy.reasons : [];
+  const byCodeMap = new Map();
+  let warnCount = 0;
+  let escalateCount = 0;
+
+  for (const reason of reasons) {
+    if (!isObject(reason)) {
+      continue;
+    }
+
+    const code = asString(reason.code) ?? "UNKNOWN_REASON";
+    const severity = asString(reason.severity) ?? "warn";
+
+    if (severity === "escalate") {
+      escalateCount += 1;
+    } else if (severity === "warn") {
+      warnCount += 1;
+    }
+
+    const current = byCodeMap.get(code) ?? {
+      code,
+      count: 0,
+      warn_count: 0,
+      escalate_count: 0,
+      severity: "warn",
+    };
+    current.count += 1;
+    if (severity === "escalate") {
+      current.escalate_count += 1;
+      current.severity = "escalate";
+    } else if (severity === "warn") {
+      current.warn_count += 1;
+    }
+    byCodeMap.set(code, current);
+  }
+
+  const byCode = Array.from(byCodeMap.values()).sort((left, right) => {
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+
+    return left.code.localeCompare(right.code);
+  });
+
+  return {
+    warn_count: warnCount,
+    escalate_count: escalateCount,
+    total_unique_codes: byCode.length,
+    by_code: byCode,
+    top_codes: byCode.slice(0, 5),
+  };
+}
+
+function summarizeActionItems(manifest) {
+  const fonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
+  const licenseInstances = Array.isArray(manifest.license_instances) ? manifest.license_instances : [];
+  const instancesById = new Map();
+
+  for (const instance of licenseInstances) {
+    if (!isObject(instance)) {
+      continue;
+    }
+
+    const licenseId = asString(instance.license_id);
+    if (!licenseId) {
+      continue;
+    }
+    instancesById.set(licenseId, instance);
+  }
+
+  const fontsMissingLicenseInstance = [];
+  const fontsMissingEvidence = [];
+  const byoFontIds = [];
+
+  for (const font of fonts) {
+    if (!isObject(font)) {
+      continue;
+    }
+
+    const sourceType = asString(font?.source?.type);
+    if (sourceType !== "byo") {
+      continue;
+    }
+
+    const fontId = asString(font.font_id) ?? "unknown_font";
+    byoFontIds.push(fontId);
+
+    const linkedIds = asStringArray(font.license_instance_ids);
+    const activeLicenseInstanceId = asString(font.active_license_instance_id) ?? linkedIds[0] ?? null;
+    const linkedInstance = activeLicenseInstanceId ? instancesById.get(activeLicenseInstanceId) ?? null : null;
+
+    if (!linkedInstance) {
+      fontsMissingLicenseInstance.push(fontId);
+      continue;
+    }
+
+    const evidence = Array.isArray(linkedInstance.evidence) ? linkedInstance.evidence : [];
+    if (evidence.length === 0) {
+      fontsMissingEvidence.push({
+        font_id: fontId,
+        license_id: activeLicenseInstanceId,
+      });
+    }
+  }
+
+  const licenseInstancesWithoutEvidence = licenseInstances
+    .filter((instance) => isObject(instance))
+    .map((instance) => {
+      const licenseId = asString(instance.license_id);
+      const evidence = Array.isArray(instance.evidence) ? instance.evidence : [];
+      return {
+        license_id: licenseId,
+        has_evidence: evidence.length > 0,
+      };
+    })
+    .filter((entry) => entry.license_id && entry.has_evidence === false)
+    .map((entry) => entry.license_id)
+    .sort((left, right) => left.localeCompare(right));
+
+  return {
+    byo_font_ids: byoFontIds.sort((left, right) => left.localeCompare(right)),
+    fonts_missing_license_instance: fontsMissingLicenseInstance.sort((left, right) => left.localeCompare(right)),
+    fonts_missing_evidence: fontsMissingEvidence.sort((left, right) => left.font_id.localeCompare(right.font_id)),
+    license_instances_without_evidence: licenseInstancesWithoutEvidence,
+  };
+}
+
+function summarizeCoverage(fontSummary, evidenceSummary, actionItems) {
+  const byoTotal = Array.isArray(actionItems.byo_font_ids) ? actionItems.byo_font_ids.length : 0;
+  const missingLinked = Array.isArray(actionItems.fonts_missing_license_instance)
+    ? actionItems.fonts_missing_license_instance.length
+    : 0;
+  const missingEvidence = Array.isArray(actionItems.fonts_missing_evidence)
+    ? actionItems.fonts_missing_evidence.length
+    : 0;
+  const withLinked = Math.max(byoTotal - missingLinked, 0);
+  const withEvidence = Math.max(withLinked - missingEvidence, 0);
+  const totalFonts = typeof fontSummary.total_fonts === "number" ? fontSummary.total_fonts : 0;
+
+  return {
+    total_fonts: totalFonts,
+    byo_fonts_total: byoTotal,
+    byo_fonts_with_linked_license_instance: withLinked,
+    byo_fonts_with_linked_license_instance_pct: toPercent(withLinked, byoTotal),
+    byo_fonts_with_linked_evidence: withEvidence,
+    byo_fonts_with_linked_evidence_pct: toPercent(withEvidence, byoTotal),
+    license_instances_total:
+      typeof evidenceSummary.total_instances === "number" ? evidenceSummary.total_instances : 0,
+    license_instances_with_evidence:
+      typeof evidenceSummary.with_evidence === "number" ? evidenceSummary.with_evidence : 0,
+    license_instances_with_evidence_pct: toPercent(
+      evidenceSummary.with_evidence,
+      evidenceSummary.total_instances,
+    ),
+  };
+}
+
+function summarizeCiReadiness(policy, policyBreakdown) {
+  const decision = asString(policy?.decision) ?? "allow";
+  const releaseBlocked = decision === "escalate";
+  const status = releaseBlocked ? "blocked" : decision === "warn" ? "warning" : "pass";
+
+  return {
+    status,
+    default_fail_on: "escalate",
+    release_blocked: releaseBlocked,
+    warnings_present: policyBreakdown.warn_count > 0,
+    escalations_present: policyBreakdown.escalate_count > 0,
+  };
+}
+
+function formatInlineList(values, maxItems = 12) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return "n/a";
+  }
+
+  const visible = values.slice(0, maxItems);
+  const overflow = values.length - visible.length;
+  const suffix = overflow > 0 ? `, +${overflow} more` : "";
+  return `${visible.join(", ")}${suffix}`;
+}
+
+function formatTopCodesInline(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return "none";
+  }
+
+  return items
+    .map((entry) => `${entry.code} (${entry.count}, ${entry.severity})`)
+    .join(", ");
+}
+
 function summarizeFonts(manifest) {
   const fonts = Array.isArray(manifest.fonts) ? manifest.fonts : [];
   const bySource = {};
@@ -565,6 +770,15 @@ function renderReportMarkdown(report) {
   lines.push(`- Decision: **${report.policy.decision}**`);
   lines.push(`- Reasons: ${report.policy.reasons_count}`);
   lines.push(`- Suppressed reasons: ${report.policy.suppressed_reasons_count}`);
+  lines.push(`- Warn reasons: ${report.policy.warn_count}`);
+  lines.push(`- Escalate reasons: ${report.policy.escalate_count}`);
+  lines.push(`- Top reason codes: ${formatTopCodesInline(report.policy.reasons_by_code_top)}`);
+  lines.push("");
+  lines.push(`## CI Readiness`);
+  lines.push(`- Status: **${report.ci.status}**`);
+  lines.push(`- Release blocked (default fail-on=${report.ci.default_fail_on}): ${report.ci.release_blocked}`);
+  lines.push(`- Warnings present: ${report.ci.warnings_present}`);
+  lines.push(`- Escalations present: ${report.ci.escalations_present}`);
   lines.push("");
   lines.push(`## Quote`);
   lines.push(`- Line items: ${report.quote.line_items_count}`);
@@ -574,11 +788,38 @@ function renderReportMarkdown(report) {
   lines.push(`- Total: ${report.fonts.total_fonts}`);
   lines.push(`- By source: \`${JSON.stringify(report.fonts.by_source)}\``);
   lines.push("");
+  lines.push(`## Coverage`);
+  lines.push(
+    `- BYO fonts with linked license instance: ${report.coverage.byo_fonts_with_linked_license_instance}/${report.coverage.byo_fonts_total} (${formatPercent(report.coverage.byo_fonts_with_linked_license_instance_pct)})`,
+  );
+  lines.push(
+    `- BYO fonts with linked evidence: ${report.coverage.byo_fonts_with_linked_evidence}/${report.coverage.byo_fonts_total} (${formatPercent(report.coverage.byo_fonts_with_linked_evidence_pct)})`,
+  );
+  lines.push(
+    `- License instances with evidence: ${report.coverage.license_instances_with_evidence}/${report.coverage.license_instances_total} (${formatPercent(report.coverage.license_instances_with_evidence_pct)})`,
+  );
+  lines.push("");
   lines.push(`## Evidence`);
   lines.push(`- License instances: ${report.evidence.total_instances}`);
   lines.push(`- With evidence: ${report.evidence.with_evidence}`);
   lines.push(`- Without evidence: ${report.evidence.without_evidence}`);
   lines.push(`- Evidence items: ${report.evidence.evidence_items_count}`);
+  lines.push("");
+  lines.push(`## Action Items`);
+  lines.push(`- BYO fonts without linked license instance: ${report.actions.fonts_missing_license_instance_count}`);
+  lines.push(
+    `- Example font_ids (missing linked license): \`${formatInlineList(report.actions.fonts_missing_license_instance)}\``,
+  );
+  lines.push(`- BYO fonts missing evidence on linked instance: ${report.actions.fonts_missing_evidence_count}`);
+  lines.push(
+    `- Example font->license (missing evidence): \`${formatInlineList(
+      report.actions.fonts_missing_evidence.map((entry) => `${entry.font_id}->${entry.license_id}`),
+    )}\``,
+  );
+  lines.push(`- License instances without evidence: ${report.actions.license_instances_without_evidence_count}`);
+  lines.push(
+    `- Example license_ids without evidence: \`${formatInlineList(report.actions.license_instances_without_evidence)}\``,
+  );
   lines.push("");
   lines.push(`## Events`);
   lines.push(`- Present: ${report.events.present}`);
@@ -1762,6 +2003,12 @@ async function handleReport(cwd, flags) {
   const quote = generateQuote(manifest);
   const events = await summarizeEvents(projectRoot);
   const exceptions = readPolicyExceptions(manifest);
+  const fontSummary = summarizeFonts(manifest);
+  const evidenceSummary = summarizeEvidenceHealth(manifest);
+  const actionItems = summarizeActionItems(manifest);
+  const coverageSummary = summarizeCoverage(fontSummary, evidenceSummary, actionItems);
+  const policyBreakdown = summarizePolicyBreakdown(policy);
+  const ciReadiness = summarizeCiReadiness(policy, policyBreakdown);
 
   const report = {
     generated_at: new Date().toISOString(),
@@ -1776,17 +2023,32 @@ async function handleReport(cwd, flags) {
       decision: policy.decision,
       reasons_count: Array.isArray(policy.reasons) ? policy.reasons.length : 0,
       suppressed_reasons_count: Array.isArray(policy.suppressed_reasons) ? policy.suppressed_reasons.length : 0,
+      warn_count: policyBreakdown.warn_count,
+      escalate_count: policyBreakdown.escalate_count,
+      total_unique_reason_codes: policyBreakdown.total_unique_codes,
+      reasons_by_code: policyBreakdown.by_code,
+      reasons_by_code_top: policyBreakdown.top_codes,
       evidence_required: Array.isArray(policy.evidence_required) ? policy.evidence_required : [],
       active_exception_ids: Array.isArray(policy.active_exception_ids) ? policy.active_exception_ids : [],
     },
+    ci: ciReadiness,
     quote: {
       totals: quote.totals,
       line_items_count: Array.isArray(quote.line_items) ? quote.line_items.length : 0,
       skipped_count: Array.isArray(quote.skipped) ? quote.skipped.length : 0,
       deterministic_hash: quote.deterministic_hash,
     },
-    fonts: summarizeFonts(manifest),
-    evidence: summarizeEvidenceHealth(manifest),
+    fonts: fontSummary,
+    coverage: coverageSummary,
+    actions: {
+      fonts_missing_license_instance_count: actionItems.fonts_missing_license_instance.length,
+      fonts_missing_license_instance: actionItems.fonts_missing_license_instance,
+      fonts_missing_evidence_count: actionItems.fonts_missing_evidence.length,
+      fonts_missing_evidence: actionItems.fonts_missing_evidence,
+      license_instances_without_evidence_count: actionItems.license_instances_without_evidence.length,
+      license_instances_without_evidence: actionItems.license_instances_without_evidence,
+    },
+    evidence: evidenceSummary,
     exceptions: {
       total_exceptions: exceptions.length,
       active_exceptions: exceptions.filter((entry) => !isPolicyExceptionExpired(entry)).length,

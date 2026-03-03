@@ -72,7 +72,7 @@ node packages/cli/src/index.js quote
 - `sync export`
 - `policy`
 - `quote`
-- `migrate` (stub)
+- `migrate`
 
 ## License Workflow
 - `scan --discover` finds font files and font-adjacent license files in the repository.
@@ -83,6 +83,8 @@ node packages/cli/src/index.js quote
 - `policy` warns when BYO fonts have no linked license instance or no evidence.
 - `policy --format sarif` / `policy --format junit` provides code-scanning and test-report outputs.
 - `policy --preset strict|startup|enterprise` applies opinionated policy profiles.
+- `report` includes CI-readiness, coverage KPIs, top risk codes, and actionable remediation lists.
+- `scan --discover` ignores bundler artifacts like `*.js.LICENSE.txt` / `*.css.LICENSE.txt`.
 
 ## Documentation
 - V1 feature cut: `docs/specs/v1-feature-set.md`
